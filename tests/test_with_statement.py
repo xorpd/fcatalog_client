@@ -1,16 +1,18 @@
-from __future__ import with_statement
 import unittest
 
 class TestWithStatementException(unittest.TestCase):
     def test_exception_caught(self):
+        """
+        Test if the python with statement executes __exit__ even if an
+        exception happens in the middle.
+        """
         l = []
         class CContext(object):
             def __enter__(self):
-                l.append(0)
-                assert False
+                l.append('enter')
 
-            def __leave__(self):
-                l.append(1)
+            def __exit__(self,type,value,traceback):
+                l.append('exit')
 
             def ex_method(self):
                 """A method that raises an exception"""
@@ -22,5 +24,5 @@ class TestWithStatementException(unittest.TestCase):
         except Exception:
             pass
 
-        self.assertEqual(l,[0,1])
+        self.assertEqual(l,['enter','exit'])
 
