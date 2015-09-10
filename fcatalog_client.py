@@ -11,6 +11,7 @@ class FCatalogClientError(Exception): pass
 class DeserializeError(FCatalogClientError): pass
 class SerializeError(FCatalogClientError): pass
 class NetError(FCatalogClientError): pass
+class DBContextError(FcatalogClientError): pass
 
 
 # The possible messages for the protocol:
@@ -137,28 +138,17 @@ def parse_msg_response_similars(msg):
 # See http://preshing.com/20110920/the-python-with-statement-by-example/
 # For explanation about the with statement.
 
-class ConContext(object):
-    def __init__(self,remote):
-        # Initialize _sock to be None:
-        self._sock = None
+# TODO: Continue here.
 
-        # Keep remote: A tuple of address and port.
-        self._remote = remote
-
-    def __enter__(self):
-        self._sock = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
-        self._sock.connect(remote)
-        pass
-
-    def __leave__(self):
-        self._sock.close()
-        self._sock = None
-
+class FrameEndpoint(object):
     def send_frame(self,data):
         """
         Send one frame to a socket.
         """
-        self._sock.send(len_prefix_pack(data))
+        try:
+            self._sock.send(len_prefix_pack(data))
+        except socket.error:
+            raise NetError('Failed sending a frame')
 
     def recv_frame(self):
         """
@@ -166,9 +156,49 @@ class ConContext(object):
         Every frame is prefixed with a dword of its length.
         """
         # Receive 4 bytes:
-        len_data = self._sock.recv(4)
+        try:
+            len_data = self._sock.recv(4)
+        except socket.error:
+            raise NetError('Failed receiving a frame')
+
         if len(len_data) < 4:
             raise NetError('Received invalid frame from remote host')
+
+    def close():
+        pass
+
+assert False
+
+class DBContext(object):
+    def __init__(self,remote,db_name):
+        # Initialize _sock to be None:
+        self._sock = None
+
+        # Keep remote: A tuple of address and port.
+        self._remote = remote
+
+        # Keep db_name:
+        self._db_name = db_name
+
+    def __enter__(self):
+        # Connect socket
+
+        self._send_choose_db(self._db_name)
+        # Handle exceptions here:
+        assert False
+
+    def __leave__(self):
+        pass
+
+
+    def _send_choose_db(self,db_name):
+        """Send a CHOOSE_DB message"""
+        self._send_frame(build_msg_choose_db(db_name))
+
+    def add_function(self):
+        pass
+
+    def request_similars(self):
         pass
 
 
