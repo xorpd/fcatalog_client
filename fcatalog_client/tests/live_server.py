@@ -3,6 +3,18 @@ import string
 import random
 from fcatalog_client import TCPFrameClient,DBEndpoint
 
+
+def sample_test(remote,db_name):
+    frame_endpoint = TCPFrameClient(remote)
+    dbe = DBEndpoint(frame_endpoint,db_name)
+
+    dbe.close()
+
+
+tests_list = [sample_test]
+
+###########################################################################
+
 def rand_db_name():
     """
     Generate a random test_db name.
@@ -19,11 +31,19 @@ def live_test_client(remote):
     """
     db_name = rand_db_name()
 
-    frame_endpoint = TCPFrameClient(remote)
-    dbe = DBEndpoint(frame_endpoint,db_name)
+    total = True
+    for test_func in tests_list:
+        success = True
+        try:
+            test_func(remote,db_name)
+        except Exception:
+            success = False
 
-    dbe.close()
+        total = total and success
 
+        print('{} : {}'.format(test_func,success))
+
+    print('Total result: {}'.format(total))
 
 
 def start():
