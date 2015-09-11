@@ -107,6 +107,7 @@ def build_msg_get_similars(func_data,num_similars):
 def parse_msg_response_similars(msg):
     """
     Parse a response similars messages. Raise an exception if failed.
+    We assume that msg does not contain the message type package.
     """
 
     if len(msg) < 4:
