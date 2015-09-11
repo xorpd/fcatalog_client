@@ -7,7 +7,7 @@ from fcatalog_client.db_endpoint import \
     len_prefix_pack,len_prefix_unpack,dword_pack,dword_unpack,\
     build_msg_choose_db,build_msg_add_function,build_msg_get_similars,\
     parse_msg_response_similars,\
-    TCPFrameClient
+    TCPFrameClient,FrameEndpoint, DBEndpoint,FSimilar
 
 
 class TestPacking(unittest.TestCase):
@@ -152,6 +152,7 @@ class TestTCPFrameClient(unittest.TestCase):
 
         # Create a listening server socket:
         s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+        # Reuse address:
         s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
         s.bind(('',LOCAL_PORT))
         s.listen(5)
@@ -193,4 +194,108 @@ class TestTCPFrameClient(unittest.TestCase):
 
         # Close TCPFrameClient:
         tfc.close()
+
+
+########################################################################
+
+
+class MockFrameEndpoint(FrameEndpoint):
+    def __init__(self):
+        self.in_list = []
+        self.out_list = []
+
+    def send_frame(self,data):
+        """Send a frame to remote host"""
+        self.out_list.append(data)
+
+    def recv_frame(self):
+        """Receive a frame from remote import host"""
+        # Pop one frame:
+        return self.in_list.pop(0)
+
+    def close(self):
+        """Close connection to remote host"""
+        pass
+
+
+class TestDBEndpoint(unittest.TestCase):
+    def test_add_function(self):
+        """
+        Check basic operation of DBEndpoint
+        """
+        mfe = MockFrameEndpoint()
+        dbe = DBEndpoint(mfe,'my_db_name')
+
+        # We expect the CHOOSE_DB message to be here:
+        self.assertEqual(len(mfe.out_list),1)
+        frame = mfe.out_list.pop(0)
+        assert 'my_db_name' in frame
+
+        func_name = 'my_func_name'
+        func_comment = 'my function comment'
+        func_data = 'kasdjflk40938523094802934829304'
+
+        dbe.add_function(func_name,func_comment,func_data)
+        self.assertEqual(len(mfe.out_list),1)
+        frame = mfe.out_list.pop(0)
+        for d in (func_name,func_comment,func_data):
+            assert d in frame
+
+    def test_request_similars(self):
+        """
+        Check basic operation of DBEndpoint
+        """
+        mfe = MockFrameEndpoint()
+        dbe = DBEndpoint(mfe,'my_db_name')
+
+        # We expect the CHOOSE_DB message to be here:
+        self.assertEqual(len(mfe.out_list),1)
+        frame = mfe.out_list.pop(0)
+        assert 'my_db_name' in frame
+
+        func_data = '029348509238459kldfjaklsdjflkasjdfklasdf'
+        num_similars = 8
+
+        # Prepare a response for the REQUEST_SIMILARS message ahead of time:
+        # Two results:
+        name1 = 'name1'
+        comment1 = 'comment1'
+        sim_grade1 = 7
+
+        name2 = 'name1'
+        comment2 = 'comment1'
+        sim_grade2 = 7
+
+        msg = ""
+        # Two records:
+        msg += struct.pack('I',2)
+
+        # First record:
+        msg += struct.pack('I',len(name1))
+        msg += name1
+        msg += struct.pack('I',len(comment1))
+        msg += comment1
+        msg += struct.pack('I',sim_grade1)
+
+        # Second record:
+        msg += struct.pack('I',len(name2))
+        msg += name2
+        msg += struct.pack('I',len(comment2))
+        msg += comment2
+        msg += struct.pack('I',sim_grade2)
+
+        # Add message type:
+        frame = dword_pack(MsgTypes.RESPONSE_SIMILARS,msg)
+        mfe.in_list.append(frame)
+
+        similars = dbe.request_similars(func_data,num_similars)
+        self.assertEqual(len(mfe.out_list),1)
+        frame = mfe.out_list.pop(0)
+        assert func_data in frame
+
+        # We expect two results:
+        self.assertEqual(len(similars),2)
+        self.assertIsInstance(similars[0],FSimilar)
+
+        dbe.close()
 
