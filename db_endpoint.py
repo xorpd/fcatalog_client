@@ -11,7 +11,7 @@ class FCatalogClientError(Exception): pass
 class DeserializeError(FCatalogClientError): pass
 class SerializeError(FCatalogClientError): pass
 class NetError(FCatalogClientError): pass
-class DBContextError(FcatalogClientError): pass
+class DBEndpointError(FcatalogClientError): pass
 
 
 # The possible messages for the protocol:
@@ -60,7 +60,7 @@ def dword_pack(dword,msg):
 def dword_unpack(data):
     """
     Unpack a message with a length prefix.
-    returns (msg_type,msg)
+    returns (dword,msg)
     """
     if len(data) < 4:
         raise DeserializeError('data is too short to contain a message type')
@@ -135,20 +135,35 @@ def parse_msg_response_similars(msg):
 
 ##############################################################
 
-# See http://preshing.com/20110920/the-python-with-statement-by-example/
-# For explanation about the with statement.
 
-# TODO: Continue here.
-
+# An abstract class for FrameEndpoint:
 class FrameEndpoint(object):
+    def send_frame(self,data):
+        """Send a frame to remote host"""
+        raise NotImplementedError()
+    def recv_frame(self):
+        """Receive a frame from remote import host"""
+        raise NotImplementedError()
+    def close(self):
+        """Close connection to remote host"""
+        raise NotImplementedError()
+
+
+class TCPFrameClient(FrameEndpoint):
+    def __init__(self,remote):
+        try:
+            self._sock = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+        except socket.error as e
+            raise NetError('Connection to remote host failed.') from e
+
     def send_frame(self,data):
         """
         Send one frame to a socket.
         """
         try:
             self._sock.send(len_prefix_pack(data))
-        except socket.error:
-            raise NetError('Failed sending a frame')
+        except socket.error as e
+            raise NetError('Failed sending a frame') from e
 
     def recv_frame(self):
         """
@@ -158,56 +173,85 @@ class FrameEndpoint(object):
         # Receive 4 bytes:
         try:
             len_data = self._sock.recv(4)
-        except socket.error:
-            raise NetError('Failed receiving a frame')
+        except socket.error as e
+            raise NetError('Failed receiving a frame') from e
+
+        if len(len_data) == 0:
+            # Remote host has closed the connection:
+            return None
 
         if len(len_data) < 4:
             raise NetError('Received invalid frame from remote host')
 
-    def close():
-        pass
+    def close(self):
+        """
+        Close the FrameEndpoint.
+        """
+        try:
+            self._sock.close()
+            self._sock = None
+        except socket.error:
+            # We don't care about errors at this point.
+            pass
 
-assert False
 
-class DBContext(object):
-    def __init__(self,remote,db_name):
+
+class DBEndpoint(object):
+    def __init__(self,frame_endpoint,db_name):
         # Initialize _sock to be None:
         self._sock = None
 
         # Keep remote: A tuple of address and port.
-        self._remote = remote
+        self._frame_endpoint = frame_endpoint
 
         # Keep db_name:
         self._db_name = db_name
 
-    def __enter__(self):
-        # Connect socket
-
+        # Send a choose_db frame:
         self._send_choose_db(self._db_name)
-        # Handle exceptions here:
-        assert False
 
-    def __leave__(self):
-        pass
-
+    def close(self):
+        """
+        Close connection to remote db.
+        """
+        self._frame_endpoint.close()
 
     def _send_choose_db(self,db_name):
-        """Send a CHOOSE_DB message"""
-        self._send_frame(build_msg_choose_db(db_name))
-
-    def add_function(self):
-        pass
-
-    def request_similars(self):
-        pass
+        """
+        Send a CHOOSE_DB message
+        """
+        self._frame_endpoint.send_frame(build_msg_choose_db(db_name))
 
 
-class FCatalogClient(object):
-    def __init__(self):
-        pass
+    def add_function(self,func_name,func_comment,func_data):
+        """
+        Add a function to remote database.
+        """
+        self._frame_endpoint.send_frame(\
+            build_msg_add_function(func_name,func_comment,func_data) \
+            )
 
+    def request_similars(self,func_data,num_similars):
+        """
+        Send a request for similar functions to remote db. returns a list of
+        results, each of the form FSimilar.
+        """
+        self._frame_endpoint.send_frame(\
+            build_msg_get_similars(func_data,num_similars) \
+            )
+        # Wait for result from RequestSimilars query:
+        frame = self._frame_endpoint.recv_frame()
+        if frame is None:
+            raise DBEndpointError('Remote host has closed the connection')
 
+        msg_type, msg = dword_unpack(frame)
+        if msg_type != MsgTypes.RESPONSE_SIMILARS:
+            raise DBEndpointError('Invalid msg_type returned from server')
 
+        similars = parse_msg_response_similars(msg)
+        if len(similars) > num_similars:
+            raise DBEndpointError('Amount of results exceeded requested '
+                    ' num_similars')
 
-
+        return similars
 
