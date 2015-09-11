@@ -75,7 +75,7 @@ def build_msg_choose_db(db_name):
     Build a CHOOSE_DB message with the given db_name.
     """
     inner_msg = len_prefix_pack(db_name)
-    msg = msg_type_pack(MsgTypes.CHOOSE_DB,inner_msg)
+    msg = dword_pack(MsgTypes.CHOOSE_DB,inner_msg)
     return msg
 
 
@@ -152,6 +152,7 @@ class TCPFrameClient(FrameEndpoint):
     def __init__(self,remote):
         try:
             self._sock = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+            self._sock.connect(remote)
         except socket.error as e:
             raise NetError('Connection to remote host failed.')
             # raise NetError('Connection to remote host failed.') from e
@@ -180,15 +181,25 @@ class TCPFrameClient(FrameEndpoint):
 
         if len(len_data) == 0:
             # Remote host has closed the connection:
+            self.close()
             return None
 
-        if len(len_data) < 4:
+        len_int = struct.unpack('I',len_data)[0]
+
+
+        if len_int < 4:
             raise NetError('Received invalid frame from remote host')
+
+        return self._sock.recv(len_int)
 
     def close(self):
         """
         Close the FrameEndpoint.
         """
+        # Do nothing if the socket is None. (Maybe we have already closed?)
+        if self._sock is None:
+            return
+
         try:
             self._sock.close()
             self._sock = None
