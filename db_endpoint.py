@@ -2,7 +2,6 @@
 # By xorpd.
 
 import socket
-import idaapi
 import struct
 import collections
 
@@ -11,7 +10,7 @@ class FCatalogClientError(Exception): pass
 class DeserializeError(FCatalogClientError): pass
 class SerializeError(FCatalogClientError): pass
 class NetError(FCatalogClientError): pass
-class DBEndpointError(FcatalogClientError): pass
+class DBEndpointError(FCatalogClientError): pass
 
 
 # The possible messages for the protocol:
@@ -153,8 +152,9 @@ class TCPFrameClient(FrameEndpoint):
     def __init__(self,remote):
         try:
             self._sock = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
-        except socket.error as e
-            raise NetError('Connection to remote host failed.') from e
+        except socket.error as e:
+            raise NetError('Connection to remote host failed.')
+            # raise NetError('Connection to remote host failed.') from e
 
     def send_frame(self,data):
         """
@@ -162,8 +162,9 @@ class TCPFrameClient(FrameEndpoint):
         """
         try:
             self._sock.send(len_prefix_pack(data))
-        except socket.error as e
-            raise NetError('Failed sending a frame') from e
+        except socket.error as e:
+            raise NetError('Failed sending a frame')
+            # raise NetError('Failed sending a frame') from e
 
     def recv_frame(self):
         """
@@ -173,8 +174,9 @@ class TCPFrameClient(FrameEndpoint):
         # Receive 4 bytes:
         try:
             len_data = self._sock.recv(4)
-        except socket.error as e
-            raise NetError('Failed receiving a frame') from e
+        except socket.error as e:
+            raise NetError('Failed receiving a frame')
+            # raise NetError('Failed receiving a frame') from e
 
         if len(len_data) == 0:
             # Remote host has closed the connection:
