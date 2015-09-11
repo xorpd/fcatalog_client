@@ -14,13 +14,15 @@ def sample_test(remote,db_name):
 tests_list = [sample_test]
 
 ###########################################################################
+RAND_PART_LENGTH = 20
 
 def rand_db_name():
     """
     Generate a random test_db name.
     """
     rand_part = \
-            ''.join(random.choice(string.ascii_lowercase) for _ in range(20))
+            ''.join(random.choice(string.ascii_lowercase) for _ in \
+            range(RAND_PART_LENGTH))
 
     return 'test_db_' + rand_part
 
