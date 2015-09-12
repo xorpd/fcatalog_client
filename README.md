@@ -19,6 +19,8 @@ Requirements:
 
 - I tested this only on Windows 7. It might work on linux, but also might not.
 
+- You will need a working [fcatalog_server](https://github.com/xorpd/fcatalog_server).
+
 
 Installation
 ------------
