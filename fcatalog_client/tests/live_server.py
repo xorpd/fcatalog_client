@@ -55,19 +55,72 @@ class TestRemoteDB(unittest.TestCase):
         dbe = DBEndpoint(frame_endpoint,db_name)
 
 
-        func_name = 'func_name1'
-        func_comment = 'func_comment1'
-        func_data = '230948509238459238459283409582309458230945'
+        # A three somewhat similar functions:
+        func_name1 = 'func_name1'
+        func_comment1 = 'func_comment1'
+        func_data1 = '230948509238459238459283409582309458230945'
 
-        dbe.add_function(func_name,func_comment,func_data)
-        similars = dbe.request_similars(func_data,3)
+        func_name2 = 'func_name2'
+        func_comment2 = 'func_comment2'
+        func_data2 = '230948509218459238459223409582309458230945'
+
+        func_name3 = 'func_name3'
+        func_comment3 = 'func_comment3'
+        func_data3 = '230948509018459238459223409280309458030945'
+
+        # A very different function:
+        func_name4 = 'func_name4'
+        func_comment4 = 'func_comment4'
+        func_data4 = 'kasjflkasjfdlkasjdfoiuweoriuqwioreuwqioekaskldfjaslk'
+
+        dbe.add_function(func_name1,func_comment1,func_data1)
+        dbe.add_function(func_name2,func_comment2,func_data2)
+        dbe.add_function(func_name3,func_comment3,func_data3)
+        dbe.add_function(func_name4,func_comment4,func_data4)
+
+        # Check if the amount of returned functions is reasonable:
+        similars = dbe.request_similars(func_data1,1)
         self.assertEqual(len(similars),1)
-        self.assertEqual(similars[0].name,func_name)
-        self.assertEqual(similars[0].comment,func_comment)
+        similars = dbe.request_similars(func_data1,2)
+        self.assertEqual(len(similars),2)
+        similars = dbe.request_similars(func_data1,3)
+        self.assertEqual(len(similars),3)
+        similars = dbe.request_similars(func_data1,4)
+        self.assertEqual(len(similars),3)
+
+        self.assertEqual(similars[0].name,func_name1)
+        self.assertEqual(similars[0].comment,func_comment1)
+        self.assertEqual(similars[0].sim_grade,NUM_HASHES)
+
+        # Function 2 is second place with respect to similarity to function 1:
+        self.assertEqual(similars[1].name,func_name2)
+        self.assertLess(similars[1].sim_grade,NUM_HASHES)
+        # Function 3 is third place:
+        self.assertEqual(similars[2].name,func_name3)
+        self.assertLess(similars[2].sim_grade,NUM_HASHES)
+
+        # function 4 is the only function that looks like function 4 in this
+        # dataset:
+        similars = dbe.request_similars(func_data4,3)
+        self.assertEqual(len(similars),1)
+        self.assertEqual(similars[0].name,func_name4)
+
+        dbe.close()
+
+
+        # Check persistency of the database by opening the same one again and
+        # running a query:
+        frame_endpoint = TCPFrameClient(remote)
+        dbe = DBEndpoint(frame_endpoint,db_name)
+
+        similars = dbe.request_similars(func_data1,4)
+        self.assertEqual(len(similars),3)
+
+        self.assertEqual(similars[0].name,func_name1)
+        self.assertEqual(similars[0].comment,func_comment1)
         self.assertEqual(similars[0].sim_grade,NUM_HASHES)
 
         dbe.close()
-        
 
 tests_list = [TestRemoteDB]
 
