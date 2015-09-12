@@ -9,7 +9,12 @@ class FCatalogClientError(Exception): pass
 # similars.
 MIN_FUNC_LENGTH = 0x40
 
-FCATALOG_PREFIX = 'FCATALOG__'
+FCATALOG_FUNC_NAME_PREFIX = 'FCATALOG__'
+FCATALOG_COMMENT_PREFIX = '%%%'
+
+SIMILARITY_CUT = 5
+
+NUM_SIMILARS = 1
 
 def get_func_length(func_addr):
     """
@@ -37,27 +42,39 @@ def get_func_data(func_addr):
     """
     Get function's data
     """
-    func_length = get_function_length(func_addr)
+    func_length = get_func_length(func_addr)
     func_data = idc.GetManyBytes(func_addr,func_length)
     if func_data is None:
         raise FCatalogClientError('Failed reading function {:X} data'.\
                 format(func_addr))
 
+    return func_data
+
+
 def get_func_comment(func_addr):
     """
-    Get Function's comment. Ignore fcatalog prefixes.
+    Get Function's comment.
     """
-    raise NotImplementedError()
+    # Currently not implemented:
+    return ""
+
+def set_func_comment(func_addr,comment):
+    """
+    Set function's comment.
+    """
+    # Currently not implemented:
+    pass
 
 
 #########################################################################
 
-def is_fcatalog_func(func_addr):
+def is_func_fcatalog(func_addr):
     """
     Have we obtained the name for this function from fcatalog server?
     We know this by the name of the function.
     """
-    return func_name.startswith(FCATALOG_PREFIX):
+    func_name = idc.GetFunctionName(func_addr)
+    return func_name.startswith(FCATALOG_FUNC_NAME_PREFIX)
 
 def is_func_named(func_addr):
     """
@@ -74,8 +91,13 @@ def is_func_named(func_addr):
             ('maybe_' in func_name.lower()):
         return False
 
+    # Avoid RELATED functions:
+    if ('_related' in func_name.lower()) or \
+            ('related_' in func_name.lower()):
+        return False
+
     # Avoid reindexing FCATALOG functions:
-    if is_fcatalog_func(func_addr):
+    if is_func_fcatalog(func_addr):
         return False
 
     return True
@@ -100,7 +122,7 @@ def is_func_chunked(func_addr):
     # http://code.google.com/p/idapython/source/browse/trunk/python/idautils.py?r=344
 
     num_chunks = 0
-    func_iter = idaapi.func_tail_iterator_t( idaapi.get_func( func_addr ) )
+    func_iter = idaapi.func_tail_iterator_t(idaapi.get_func(func_addr))
     status = func_iter.main()
     while status:
         chunk = func_iter.chunk()
@@ -127,6 +149,70 @@ def is_func_commit_candidate(func_addr):
 
     return True
 
+def is_func_find_candidate(func_addr):
+    """
+    Is this function a candidate for finding from database (Finding similars
+    for this function?)
+    """
+    if is_func_chunked(func_addr):
+        return False
+
+    if is_func_named(func_addr):
+        return False
+
+    if not is_func_long_enough(func_addr):
+        return False
+
+    return True
+
+
+
+###########################################################################
+
+def strip_comment_fcatalog(comment):
+    """
+    Remove all fcatalog comments from a given comment.
+    """
+    res_lines = []
+
+    # Get only lines that don't start with FCATALOG_COMMENT_PREFIX:
+    lines = comment.splitlines()
+    for ln in lines:
+        if ln.startswith(FCATALOG_COMMENT_PREFIX):
+            continue
+        res_lines.append(ln)
+
+    return '\n'.join(res_lines)
+
+def add_comment_fcatalog(comment,fcatalog_comment):
+    """
+    Add fcatalog comment to a function.
+    """
+    res_lines = []
+
+    # Add the fcatalog_comment lines with a prefix:
+    for ln in fcatalog_comment.splitlines():
+        res_lines.append(FCATALOG_COMMENT_PREFIX + ' ' + ln)
+
+    # Add the rest of the comment lines:
+    for ln in comment.splitlines():
+        res_lines.append(ln)
+
+    return '\n'.join(res_lines)
+
+def make_fcatalog_name(func_name,sim_grade):
+    """
+    Make an fcatalog function name using function name and sim_grade.
+    """
+    lres = []
+    lres.append(FCATALOG_FUNC_NAME_PREFIX)
+    lres.append('{:0>2}__'.format(sim_grade))
+    lres.append(func_name)
+    return ''.join(lres)
+
+
+###########################################################################
+
 
 class FCatalogClient(object):
     def __init__(self,remote,db_name):
@@ -135,6 +221,7 @@ class FCatalogClient(object):
 
         # Keep remote db name:
         self._db_name = db_name
+
 
     def commit_funcs(self):
         """
@@ -149,11 +236,12 @@ class FCatalogClient(object):
                 continue
 
             func_name = idc.GetFunctionName(func_addr)
-            func_comment = get_func_comment(func_addr)
+            func_comment = strip_comment_fcatalog(get_func_comment(func_addr))
             func_data = get_func_data(func_addr)
 
             fdb.add_function(func_name,func_comment,func_data)
 
+        # Close db:
         fdb.close()
 
 
@@ -162,15 +250,56 @@ class FCatalogClient(object):
         For each unnamed function in this database find a similar functions
         from the fcatalog remote db, and rename appropriately.
         """
-        pass
+        # Set up a connection to remote db:
+        frame_endpoint = TCPFrameClient(self._remote)
+        fdb = DBEndpoint(frame_endpoint,self._db_name)
+
+        for func_addr in idautils.Functions():
+            if not is_func_find_candidate(func_addr):
+                continue
+
+            func_data = get_func_data(func_addr)
+            similars = fdb.request_similars(func_data,NUM_SIMILARS)
+
+            if len(similars) == 0:
+                # No similars found.
+                continue
+
+            # Get the first entry (Highest similarity):
+            fsim = similars[0]
+
+            # Discard if doesn't pass the similarity cut:
+            if fsim.sim_grade < SIMILARITY_CUT:
+                continue
+
+            # Set new name:
+            new_name = make_fcatalog_name(fsim.name,fsim.sim_grade)
+            idc.MakeName(func_addr,new_name)
+
+            # Add the comments from the fcatalog entry:
+            func_comment = get_func_comment(func_addr)
+            func_comment_new = \
+                    add_comment_fcatalog(func_comment,similars[0].comment)
+            set_func_comment(func_addr,func_comment_new)
+
+
+        # Close db:
+        fdb.close()
 
 
     def clean_idb(self):
         """
         Clean all fcatalog marks and names from this idb.
         """
-        pass
+        for func_addr in idautils.Functions():
+            # Skip functions that are not fcatalog named:
+            if not is_func_fcatalog(func_addr):
+                continue
 
+            # Clear function's name:
+            idc.MakeName(func_addr,'')
 
-
+            # Clean fcatalog comments from the function:
+            func_comment = get_func_comment(func_addr)
+            set_func_comment(func_addr,strip_comment_fcatalog(func_comment))
 
