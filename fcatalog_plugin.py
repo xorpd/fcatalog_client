@@ -79,6 +79,7 @@ class ConfForm(Form):
         self.invert = False
         Form.__init__(self, r"""STARTITEM {id:host}
 FCatalog Client Configuration
+
 <#Host:{host}>
 <#Port:{port}>
 <#Database Name:{db_name}>
@@ -99,11 +100,20 @@ class FCatalogPlugin(idaapi.plugin_t):
     wanted_hotkey = ''
 
     def init(self):
+        """
+        Initialize plugin:
+        """
         self._client_config = load_config()
         self._fcc = None
+        if self._client_config is not None:
+            self._fcc = FCatalogClient(\
+                    (self._client_config.remote_host,\
+                    self._client_config.remote_port),\
+                    self._client_config.db_name)
+
+        # Set up menus:
         ui_path = "Edit/"
         self.menu_contexts = []
-
         self.menu_contexts.append(idaapi.add_menu_item(ui_path,
                                 "FCatalog: Configure",
                                 "",
@@ -136,6 +146,9 @@ class FCatalogPlugin(idaapi.plugin_t):
         pass
 
     def term(self):
+        """
+        Terminate plugin
+        """
         for context in self.menu_contexts:
             idaapi.del_menu_item(context)
         return None
@@ -162,6 +175,10 @@ class FCatalogPlugin(idaapi.plugin_t):
 
 
     def _show_conf_form(self,arg):
+        """
+        Show the configuration form and update configuration values according
+        to user choices.
+        """
         # Create form
         cf = ConfForm()
 
