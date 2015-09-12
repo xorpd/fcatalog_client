@@ -15,6 +15,8 @@ Requirements:
   will not work with Python3. Sorry about that, IDA doesn't support Python3
   scripting yet.
 
+- I tested this only on Windows 7. It might work on linux, but also might not.
+
 
 Installation
 ------------
