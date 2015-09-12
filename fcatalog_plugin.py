@@ -1,4 +1,8 @@
+import idaapi
 from idaapi import Form
+
+import idautils
+import idc
 from fcatalog_client.ida_client import FCatalogClient,clean_idb
 
 # Client configuration:
@@ -7,6 +11,67 @@ class ClientConfig(object):
         self.db_name = None
         self.remote_host = None
         self.remote_port = None
+
+
+##########################################################################
+
+# Configuration stashing:
+
+def save_sstring(s):
+    """
+    Save a short string inside the idb.
+    """
+    min_segment_addr = min(list(idautils.Segments()))
+    # Keep the string as a regular comment on the first instruction:
+    idc.MakeComm(min_segment_addr,s)
+
+
+def load_sstring():
+    """
+    Load a short string from the idb.
+    """
+    min_segment_addr = min(list(idautils.Segments()))
+    return idc.GetCommentEx(min_segment_addr,0)
+
+def save_config(client_config):
+    """
+    Save configuration (client_config instance) to IDB.
+    """
+    config_str = "%%%"
+    config_str += client_config.remote_host
+    config_str += ":"
+    config_str += str(client_config.remote_port)
+    config_str += ":"
+    config_str += client_config.db_name
+
+    save_sstring(config_str)
+
+def load_config():
+    """
+    Save configuration (client_config instance) to IDB.
+    """
+    config_str = load_sstring()
+    if (config_str is None) or (not config_str.startswith('%%%')):
+        return ClientConfig()
+
+    # Skip the percents prefix:
+    config_str = config_str[3:]
+
+    remote_host,remote_port_str,db_name = config_str.split(':')
+    remote_port = int(remote_port_str)
+
+    # Create a client config instance and fill it with the loaded
+    # configuration:
+    client_config = ClientConfig()
+    client_config.remote_host = remote_host
+    client_config.remote_port = remote_port
+    client_config.db_name = db_name
+
+    return client_config
+
+
+
+##########################################################################
 
 
 class ConfForm(Form):
@@ -25,6 +90,7 @@ FCatalog Client Configuration
 
 
 
+
 class FCatalogPlugin(idaapi.plugin_t):
     flags = 0
     comment = ''
@@ -33,7 +99,7 @@ class FCatalogPlugin(idaapi.plugin_t):
     wanted_hotkey = ''
 
     def init(self):
-        self._client_config = ClientConfig()
+        self._client_config = load_config()
         self._fcc = None
         ui_path = "Edit/"
         self.menu_contexts = []
@@ -140,6 +206,7 @@ class FCatalogPlugin(idaapi.plugin_t):
             self._client_config.db_name = db_name
 
             if is_conf_good:
+                save_config(self._client_config)
                 self._fcc = FCatalogClient(\
                         (self._client_config.remote_host,\
                         self._client_config.remote_port),\
@@ -156,3 +223,4 @@ class FCatalogPlugin(idaapi.plugin_t):
 
 def PLUGIN_ENTRY():
     return FCatalogPlugin()
+
