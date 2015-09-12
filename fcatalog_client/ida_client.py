@@ -279,7 +279,7 @@ class FCatalogClient(object):
             # Add the comments from the fcatalog entry:
             func_comment = get_func_comment(func_addr)
             func_comment_new = \
-                    add_comment_fcatalog(func_comment,similars[0].comment)
+                    add_comment_fcatalog(func_comment,fsim.comment)
             set_func_comment(func_addr,func_comment_new)
 
 
