@@ -14,14 +14,14 @@ class ConfForm(Form):
         self.invert = False
         Form.__init__(self, r"""STARTITEM {id:host}
 FCatalog Client Configuration
-<##Host:{host}>
-<##Port:{port}>
-<##Database Name:{db_name}>
+<#Host:{host}>
+<#Port:{port}>
+<#Database Name:{db_name}>
 """, {
-            'host': Form.StringInput(tp=Form.FT_TYPE),
-            'port': Form.StringInput(tp=Form.FT_TYPE),
-            'db_name': Form.StringInput(tp=Form.FT_TYPE),
-        })
+        'host': Form.StringInput(tp=Form.FT_TYPE),
+        'port': Form.StringInput(tp=Form.FT_TYPE),
+        'db_name': Form.StringInput(tp=Form.FT_TYPE),
+    })
 
 
 
@@ -35,30 +35,30 @@ class FCatalogPlugin(idaapi.plugin_t):
     def init(self):
         self._client_config = ClientConfig()
         self._fcc = None
-        ui_path = "Edit/Plugins/FCatalog"
+        ui_path = "Edit/"
         self.menu_contexts = []
 
         self.menu_contexts.append(idaapi.add_menu_item(ui_path,
-                                "Configure",
+                                "FCatalog: Configure",
                                 "",
                                 0,
-                                self._show_conf_term,
+                                self._show_conf_form,
                                 (None,)))
 
         self.menu_contexts.append(idaapi.add_menu_item(ui_path,
-                                "Commit Functions",
+                                "FCatalog: Commit Functions",
                                 "",
                                 0,
                                 self._commit_funcs,
                                 (None,)))
         self.menu_contexts.append(idaapi.add_menu_item(ui_path,
-                                "Find Similars",
+                                "FCatalog: Find Similars",
                                 "",
                                 0,
                                 self._find_similars,
                                 (None,)))
         self.menu_contexts.append(idaapi.add_menu_item(ui_path,
-                                "Clean IDB",
+                                "FCatalog: Clean IDB",
                                 "",
                                 0,
                                 self._clean_idb,
@@ -66,33 +66,36 @@ class FCatalogPlugin(idaapi.plugin_t):
 
         return idaapi.PLUGIN_KEEP
 
+    def run(self,arg):
+        pass
+
     def term(self):
         for context in self.menu_contexts:
             idaapi.del_menu_item(context)
         return None
 
 
-    def _commit_funcs():
+    def _commit_funcs(self,arg):
         if self._fcc is None:
             print('Please configure FCatalog')
             return
         self._fcc.commit_funcs()
 
-    def _find_similars():
+    def _find_similars(self,arg):
         if self._fcc is None:
             print('Please configure FCatalog')
             return
         self._fcc.find_similars()
 
 
-    def _clean_idb():
+    def _clean_idb(self,arg):
         """
         Clean the idb from fcatalog names or comments.
         """
         clean_idb()
 
 
-    def _show_conf_form():
+    def _show_conf_form(self,arg):
         # Create form
         cf = ConfForm()
 
@@ -100,10 +103,10 @@ class FCatalogPlugin(idaapi.plugin_t):
         cf.Compile()
 
         # Populate form fields with current configuration values:
-        if self._client_config.host is not None:
-            cf.host.value = host
-        if self._client_config.port is not None:
-            cf.port.value = str(self._client_config.port)
+        if self._client_config.remote_host is not None:
+            cf.host.value = self._client_config.remote_host
+        if self._client_config.remote_port is not None:
+            cf.port.value = str(self._client_config.remote_port)
         if self._client_config.db_name is not None:
             cf.db_name.value = self._client_config.db_name
 
@@ -119,14 +122,15 @@ class FCatalogPlugin(idaapi.plugin_t):
             if len(host) == 0:
                 host = None
                 is_conf_good = False
-            self._client_config.host = host
+            self._client_config.remote_host = host
 
             # Extract port:
             try:
-                self._client_config.port = int(cf.port_value)
+                port = int(cf.port.value)
             except ValueError:
-                self._client_config.port = None
+                port = None
                 is_conf_good = False
+            self._client_config.remote_port = port
 
             # Extract db name:
             db_name = cf.db_name.value
@@ -137,7 +141,8 @@ class FCatalogPlugin(idaapi.plugin_t):
 
             if is_conf_good:
                 self._fcc = FCatalogClient(\
-                        (self._client_config.host,self._client_config.port),\
+                        (self._client_config.remote_host,\
+                        self._client_config.remote_port),\
                         self._client_config.db_name)
                 print('Configuration successful.')
             else:
@@ -146,7 +151,7 @@ class FCatalogPlugin(idaapi.plugin_t):
 
 
         # Dispose the form
-        f.Free()
+        cf.Free()
 
 
 def PLUGIN_ENTRY():
