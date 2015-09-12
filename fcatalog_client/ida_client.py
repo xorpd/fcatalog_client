@@ -287,19 +287,19 @@ class FCatalogClient(object):
         fdb.close()
 
 
-    def clean_idb(self):
-        """
-        Clean all fcatalog marks and names from this idb.
-        """
-        for func_addr in idautils.Functions():
-            # Skip functions that are not fcatalog named:
-            if not is_func_fcatalog(func_addr):
-                continue
+def clean_idb():
+    """
+    Clean all fcatalog marks and names from this idb.
+    """
+    for func_addr in idautils.Functions():
+        # Skip functions that are not fcatalog named:
+        if not is_func_fcatalog(func_addr):
+            continue
 
-            # Clear function's name:
-            idc.MakeName(func_addr,'')
+        # Clear function's name:
+        idc.MakeName(func_addr,'')
 
-            # Clean fcatalog comments from the function:
-            func_comment = get_func_comment(func_addr)
-            set_func_comment(func_addr,strip_comment_fcatalog(func_comment))
+        # Clean fcatalog comments from the function:
+        func_comment = get_func_comment(func_addr)
+        set_func_comment(func_addr,strip_comment_fcatalog(func_comment))
 
