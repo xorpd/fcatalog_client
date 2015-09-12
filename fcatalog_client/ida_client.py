@@ -227,6 +227,7 @@ class FCatalogClient(object):
         """
         Commit all the named functions from this idb to the server.
         """
+        print('Commiting functions...')
         # Set up a connection to remote db:
         frame_endpoint = TCPFrameClient(self._remote)
         fdb = DBEndpoint(frame_endpoint,self._db_name)
@@ -240,9 +241,11 @@ class FCatalogClient(object):
             func_data = get_func_data(func_addr)
 
             fdb.add_function(func_name,func_comment,func_data)
+            print(func_name)
 
         # Close db:
         fdb.close()
+        print('Done commiting functions.')
 
 
     def find_similars(self):
@@ -250,9 +253,12 @@ class FCatalogClient(object):
         For each unnamed function in this database find a similar functions
         from the fcatalog remote db, and rename appropriately.
         """
+        print('Finding similars...')
+
         # Set up a connection to remote db:
         frame_endpoint = TCPFrameClient(self._remote)
         fdb = DBEndpoint(frame_endpoint,self._db_name)
+
 
         for func_addr in idautils.Functions():
             if not is_func_find_candidate(func_addr):
@@ -272,6 +278,8 @@ class FCatalogClient(object):
             if fsim.sim_grade < SIMILARITY_CUT:
                 continue
 
+            old_name = idc.GetFunctionName(func_addr)
+
             # Set new name:
             new_name = make_fcatalog_name(fsim.name,fsim.sim_grade)
             idc.MakeName(func_addr,new_name)
@@ -282,24 +290,30 @@ class FCatalogClient(object):
                     add_comment_fcatalog(func_comment,fsim.comment)
             set_func_comment(func_addr,func_comment_new)
 
+            print('{} --> {}'.format(old_name,new_name))
 
         # Close db:
         fdb.close()
+
+        print('Done finding similars.')
 
 
 def clean_idb():
     """
     Clean all fcatalog marks and names from this idb.
     """
+    print('Cleaning idb...')
     for func_addr in idautils.Functions():
         # Skip functions that are not fcatalog named:
         if not is_func_fcatalog(func_addr):
             continue
 
+        print('{}'.format(idc.GetFunctionName(func_addr)))
         # Clear function's name:
         idc.MakeName(func_addr,'')
 
         # Clean fcatalog comments from the function:
         func_comment = get_func_comment(func_addr)
         set_func_comment(func_addr,strip_comment_fcatalog(func_comment))
+    print('Done cleaning idb.')
 
