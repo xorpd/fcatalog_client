@@ -5,7 +5,7 @@ This is the FCatalog Client IDA Plugin.
 FCatalog is the Functions Catalog. It is a tool for quickly finding similar
 functions from a large database of functions.
 
-You can find the [fcatalog_server repository here](https://github.com/xorpd/fcatalog).
+You can find the [fcatalog_server repository here](https://github.com/xorpd/fcatalog_server).
 
 Requirements:
 -------------
