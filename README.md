@@ -78,7 +78,7 @@ unittest as follows:
 There is one online test (Runs against a real server). It is
 tests/live_server.py. It should be run as follows:
 
-        c:\python27\python.exe -m fcatalog_client.tests.live_server 10.0.0.3 1337
+        c:\python27\python.exe -m fcatalog_client.tests.live_server <host> <port>
 
 Website
 -------
