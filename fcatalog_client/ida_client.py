@@ -12,8 +12,12 @@ MIN_FUNC_LENGTH = 0x40
 FCATALOG_FUNC_NAME_PREFIX = 'FCATALOG__'
 FCATALOG_COMMENT_PREFIX = '%%%'
 
-SIMILARITY_CUT = 5
+# The grade of similarity for each function is a number between 0 and this
+# constant (Inclusive):
+MAX_SIM_GRADE = 16
 
+# Amount of similar functions to return in every inquiry for similars function
+# for a specific function:
 NUM_SIMILARS = 1
 
 def get_func_length(func_addr):
@@ -249,7 +253,7 @@ class FCatalogClient(object):
         print('Done commiting functions.')
 
 
-    def find_similars(self):
+    def find_similars(self,similarity_cut):
         """
         For each unnamed function in this database find a similar functions
         from the fcatalog remote db, and rename appropriately.
@@ -276,7 +280,7 @@ class FCatalogClient(object):
             fsim = similars[0]
 
             # Discard if doesn't pass the similarity cut:
-            if fsim.sim_grade < SIMILARITY_CUT:
+            if fsim.sim_grade < similarity_cut:
                 continue
 
             old_name = idc.GetFunctionName(func_addr)
