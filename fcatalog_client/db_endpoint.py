@@ -247,12 +247,21 @@ class DBEndpoint(object):
 
     def request_similars(self,func_data,num_similars):
         """
-        Send a request for similar functions to remote db. returns a list of
-        results, each of the form FSimilar.
+        Send a request for similar functions to remote db.
+        Does not return any value. Use response_similars method to get the
+        response from the server.
         """
         self._frame_endpoint.send_frame(\
             build_msg_get_similars(func_data,num_similars) \
             )
+
+    def response_similars(self):
+        """
+        Get back a ResponseSimilars packet. We should have sent a
+        RequestSimilars packet previously, or else this function might wait
+        forever.
+        returns a list of results, each of the form FSimilar.
+        """
         # Wait for result from RequestSimilars query:
         frame = self._frame_endpoint.recv_frame()
         if frame is None:
@@ -263,9 +272,10 @@ class DBEndpoint(object):
             raise DBEndpointError('Invalid msg_type returned from server')
 
         similars = parse_msg_response_similars(msg)
-        if len(similars) > num_similars:
-            raise DBEndpointError('Amount of results exceeded requested '
-                    ' num_similars')
+        # if len(similars) > num_similars:
+        #     raise DBEndpointError('Amount of results exceeded requested '
+        #             ' num_similars')
 
         return similars
+
 

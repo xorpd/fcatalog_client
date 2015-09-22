@@ -270,7 +270,8 @@ class FCatalogClient(object):
                 continue
 
             func_data = get_func_data(func_addr)
-            similars = fdb.request_similars(func_data,NUM_SIMILARS)
+            fdb.request_similars(func_data,NUM_SIMILARS)
+            similars = fdb.response_similars()
 
             if len(similars) == 0:
                 # No similars found.

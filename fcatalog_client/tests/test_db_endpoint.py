@@ -288,7 +288,8 @@ class TestDBEndpoint(unittest.TestCase):
         frame = dword_pack(MsgTypes.RESPONSE_SIMILARS,msg)
         mfe.in_list.append(frame)
 
-        similars = dbe.request_similars(func_data,num_similars)
+        dbe.request_similars(func_data,num_similars)
+        similars = dbe.response_similars()
         self.assertEqual(len(mfe.out_list),1)
         frame = mfe.out_list.pop(0)
         assert func_data in frame
