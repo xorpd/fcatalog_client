@@ -7,7 +7,7 @@ class FCatalogClientError(Exception): pass
 
 # Minimum function size (in bytes) to be considered when trying to find
 # similars.
-MIN_FUNC_LENGTH = 0x40
+MIN_FUNC_LENGTH = 0x60
 
 FCATALOG_FUNC_NAME_PREFIX = 'FCATALOG__'
 FCATALOG_COMMENT_PREFIX = '%%%'
