@@ -79,13 +79,17 @@ class TestRemoteDB(unittest.TestCase):
         dbe.add_function(func_name4,func_comment4,func_data4)
 
         # Check if the amount of returned functions is reasonable:
-        similars = dbe.request_similars(func_data1,1)
+        dbe.request_similars(func_data1,1)
+        similars = dbe.response_similars()
         self.assertEqual(len(similars),1)
-        similars = dbe.request_similars(func_data1,2)
+        dbe.request_similars(func_data1,2)
+        similars = dbe.response_similars()
         self.assertEqual(len(similars),2)
-        similars = dbe.request_similars(func_data1,3)
+        dbe.request_similars(func_data1,3)
+        similars = dbe.response_similars()
         self.assertEqual(len(similars),3)
-        similars = dbe.request_similars(func_data1,4)
+        dbe.request_similars(func_data1,4)
+        similars = dbe.response_similars()
         self.assertEqual(len(similars),3)
 
         self.assertEqual(similars[0].name,func_name1)
@@ -101,7 +105,8 @@ class TestRemoteDB(unittest.TestCase):
 
         # function 4 is the only function that looks like function 4 in this
         # dataset:
-        similars = dbe.request_similars(func_data4,3)
+        dbe.request_similars(func_data4,3)
+        similars = dbe.response_similars()
         self.assertEqual(len(similars),1)
         self.assertEqual(similars[0].name,func_name4)
 
@@ -113,7 +118,8 @@ class TestRemoteDB(unittest.TestCase):
         frame_endpoint = TCPFrameClient(remote)
         dbe = DBEndpoint(frame_endpoint,db_name)
 
-        similars = dbe.request_similars(func_data1,4)
+        dbe.request_similars(func_data1,4)
+        similars = dbe.response_similars()
         self.assertEqual(len(similars),3)
 
         self.assertEqual(similars[0].name,func_name1)
