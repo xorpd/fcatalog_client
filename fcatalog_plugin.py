@@ -3,7 +3,7 @@ from idaapi import Form
 
 import idautils
 import idc
-from fcatalog_client.ida_client import FCatalogClient,clean_idb
+from fcatalog_client.ida_client import FCatalogClient,clean_idb,MAX_SIM_GRADE
 
 # Client configuration:
 class ClientConfig(object):
@@ -90,6 +90,24 @@ FCatalog Client Configuration
     })
 
 
+def get_similarity_cut():
+    """
+    Get similarity cut value from the user.
+    """
+    # The default similarity cut grade is just above half:
+    default_sim_cut = (MAX_SIM_GRADE // 2) + 1
+    # We have to make sure that default_sim_cut is not more than
+    # MAX_SIM_GRADE:
+    default_sim_cut = min([default_sim_cut,MAX_SIM_GRADE])
+
+    # Keep going until we get a valid sim_cut from the user:
+    sim_cut = None
+    while (sim_cut is None) or not (1 <= sim_cut <= MAX_SIM_GRADE):
+        sim_cut = idaapi.asklong(default_sim_cut,\
+                "Please choose a similarity grade cut (1 - {}): ".\
+                format(MAX_SIM_GRADE))
+
+    return sim_cut
 
 
 class FCatalogPlugin(idaapi.plugin_t):
@@ -155,16 +173,26 @@ class FCatalogPlugin(idaapi.plugin_t):
 
 
     def _commit_funcs(self,arg):
+        """
+        This function handles the event of clicking on "commit funcs" from the
+        menu.
+        """
         if self._fcc is None:
             print('Please configure FCatalog')
             return
         self._fcc.commit_funcs()
 
     def _find_similars(self,arg):
+        """
+        This function handles the event of clicking on "find similars" from the
+        menu.
+        """
         if self._fcc is None:
             print('Please configure FCatalog')
             return
-        self._fcc.find_similars()
+        # Get the similarity cut from the user:
+        similarity_cut = get_similarity_cut()
+        self._fcc.find_similars(similarity_cut)
 
 
     def _clean_idb(self,arg):
