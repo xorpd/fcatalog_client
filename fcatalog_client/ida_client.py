@@ -200,7 +200,7 @@ def add_comment_fcatalog(comment,fcatalog_comment):
 
     return '\n'.join(res_lines)
 
-def make_fcatalog_name(func_name,sim_grade):
+def make_fcatalog_name(func_name,sim_grade,func_addr):
     """
     Make an fcatalog function name using function name and sim_grade.
     """
@@ -208,6 +208,7 @@ def make_fcatalog_name(func_name,sim_grade):
     lres.append(FCATALOG_FUNC_NAME_PREFIX)
     lres.append('{:0>2}__'.format(sim_grade))
     lres.append(func_name)
+    lres.append('__{:0>8X}'.format(func_addr & 0xffffffff))
     return ''.join(lres)
 
 
@@ -281,7 +282,7 @@ class FCatalogClient(object):
             old_name = idc.GetFunctionName(func_addr)
 
             # Set new name:
-            new_name = make_fcatalog_name(fsim.name,fsim.sim_grade)
+            new_name = make_fcatalog_name(fsim.name,fsim.sim_grade,func_addr)
             idc.MakeName(func_addr,new_name)
 
             # Add the comments from the fcatalog entry:
