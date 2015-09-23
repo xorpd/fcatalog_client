@@ -110,8 +110,8 @@ def get_similarity_cut():
         if sim_cut is None:
             # If the user has aborted, we return None:
             return None
-        if not (1 <= sim_cut <= MAX_SIM_GRADE):
-            continue
+        if (1 <= sim_cut <= MAX_SIM_GRADE):
+            break
 
     return sim_cut
 
