@@ -103,7 +103,7 @@ def get_similarity_cut():
 
     # Keep going until we get a valid sim_cut from the user, or the user picks
     # cancel.
-    while True
+    while True:
         sim_cut = idaapi.asklong(default_sim_cut,\
                 "Please choose a similarity grade cut (1 - {}): ".\
                 format(MAX_SIM_GRADE))
