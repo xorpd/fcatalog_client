@@ -52,6 +52,7 @@ def load_config():
     """
     config_str = load_sstring()
     if (config_str is None) or (not config_str.startswith('%%%')):
+        # Return empty configuration:
         return None
 
     # Skip the percents prefix:
@@ -100,12 +101,17 @@ def get_similarity_cut():
     # MAX_SIM_GRADE:
     default_sim_cut = min([default_sim_cut,MAX_SIM_GRADE])
 
-    # Keep going until we get a valid sim_cut from the user:
-    sim_cut = None
-    while (sim_cut is None) or not (1 <= sim_cut <= MAX_SIM_GRADE):
+    # Keep going until we get a valid sim_cut from the user, or the user picks
+    # cancel.
+    while True
         sim_cut = idaapi.asklong(default_sim_cut,\
                 "Please choose a similarity grade cut (1 - {}): ".\
                 format(MAX_SIM_GRADE))
+        if sim_cut is None:
+            # If the user has aborted, we return None:
+            return None
+        if not (1 <= sim_cut <= MAX_SIM_GRADE):
+            continue
 
     return sim_cut
 
@@ -128,6 +134,11 @@ class FCatalogPlugin(idaapi.plugin_t):
                     (self._client_config.remote_host,\
                     self._client_config.remote_port),\
                     self._client_config.db_name)
+
+        # Make sure that self._client config is built, even if it doesn't have
+        # any fields inside:
+        if self._client_config is None:
+            self._client_config = ClientConfig()
 
         # Set up menus:
         ui_path = "Edit/"
@@ -192,6 +203,12 @@ class FCatalogPlugin(idaapi.plugin_t):
             return
         # Get the similarity cut from the user:
         similarity_cut = get_similarity_cut()
+
+        # If the user has clicked cancel, we abort:
+        if similarity_cut is None:
+            print('Aborting find_similars.')
+            return
+
         self._fcc.find_similars(similarity_cut)
 
 
