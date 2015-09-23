@@ -48,11 +48,11 @@ def save_config(client_config):
 
 def load_config():
     """
-    Save configuration (client_config instance) to IDB.
+    Load configuration (client_config instance) to IDB.
     """
     config_str = load_sstring()
     if (config_str is None) or (not config_str.startswith('%%%')):
-        return ClientConfig()
+        return None
 
     # Skip the percents prefix:
     config_str = config_str[3:]
