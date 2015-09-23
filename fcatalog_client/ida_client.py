@@ -2,6 +2,7 @@ import idaapi
 import idautils
 import idc
 from db_endpoint import DBEndpoint,TCPFrameClient
+from utils import blockify
 
 class FCatalogClientError(Exception): pass
 
@@ -19,6 +20,10 @@ MAX_SIM_GRADE = 16
 # Amount of similar functions to return in every inquiry for similars function
 # for a specific function:
 NUM_SIMILARS = 1
+
+# Amount of functions to be sent together to remote server when looking for
+# similars:
+GET_SIMILARS_BATCH_SIZE = 20
 
 def get_func_length(func_addr):
     """
@@ -170,6 +175,15 @@ def is_func_find_candidate(func_addr):
     return True
 
 
+def iter_func_find_candidates():
+    """
+    Iterate over all functions that are candidates for finding similars from
+    the remote database.
+    """
+    for func_addr in idautils.Functions():
+        if is_func_find_candidate(func_addr):
+            yield func_addr
+
 
 ###########################################################################
 
@@ -253,7 +267,27 @@ class FCatalogClient(object):
         print('Done commiting functions.')
 
 
-    def find_similars(self,similarity_cut):
+    def _batch_similars(self,fdb,l_func_addr):
+        """
+        Given a list of function addresses, request similars for each of those
+        functions. Then wait for all the responses, and return a list of tuples
+        of the form: (func_addr,similars)
+        """
+        # Send requests for similars for every function in l_func_addr list:
+        for func_addr in l_func_addr:
+            func_data = get_func_data(func_addr)
+            fdb.request_similars(func_data,1)
+
+        # Collect responses from remote server:
+        lres = []
+        for func_addr in l_func_addr:
+            similars = fdb.response_similars()
+            lres.append((func_addr,similars))
+
+        return lres
+
+
+    def find_similars(self,similarity_cut,batch_size=GET_SIMILARS_BATCH_SIZE):
         """
         For each unnamed function in this database find a similar functions
         from the fcatalog remote db, and rename appropriately.
@@ -264,39 +298,37 @@ class FCatalogClient(object):
         frame_endpoint = TCPFrameClient(self._remote)
         fdb = DBEndpoint(frame_endpoint,self._db_name)
 
+        # Iterate over blocks of candidate functions addresses:
+        for l_func_addr in blockify(iter_func_find_candidates(),batch_size):
+            # Send block to remote server and get results:
+            bsimilars = self._batch_similars(fdb,l_func_addr)
+            # Iterate over functions and results:
+            for func_addr,similars in bsimilars:
 
-        for func_addr in idautils.Functions():
-            if not is_func_find_candidate(func_addr):
-                continue
+                if len(similars) == 0:
+                    # No similars found.
+                    continue
 
-            func_data = get_func_data(func_addr)
-            fdb.request_similars(func_data,NUM_SIMILARS)
-            similars = fdb.response_similars()
+                # Get the first entry (Highest similarity):
+                fsim = similars[0]
 
-            if len(similars) == 0:
-                # No similars found.
-                continue
+                # Discard if doesn't pass the similarity cut:
+                if fsim.sim_grade < similarity_cut:
+                    continue
 
-            # Get the first entry (Highest similarity):
-            fsim = similars[0]
+                old_name = idc.GetFunctionName(func_addr)
 
-            # Discard if doesn't pass the similarity cut:
-            if fsim.sim_grade < similarity_cut:
-                continue
+                # Set new name:
+                new_name = make_fcatalog_name(fsim.name,fsim.sim_grade,func_addr)
+                idc.MakeName(func_addr,new_name)
 
-            old_name = idc.GetFunctionName(func_addr)
+                # Add the comments from the fcatalog entry:
+                func_comment = get_func_comment(func_addr)
+                func_comment_new = \
+                        add_comment_fcatalog(func_comment,fsim.comment)
+                set_func_comment(func_addr,func_comment_new)
 
-            # Set new name:
-            new_name = make_fcatalog_name(fsim.name,fsim.sim_grade,func_addr)
-            idc.MakeName(func_addr,new_name)
-
-            # Add the comments from the fcatalog entry:
-            func_comment = get_func_comment(func_addr)
-            func_comment_new = \
-                    add_comment_fcatalog(func_comment,fsim.comment)
-            set_func_comment(func_addr,func_comment_new)
-
-            print('{} --> {}'.format(old_name,new_name))
+                print('{} --> {}'.format(old_name,new_name))
 
         # Close db:
         fdb.close()
