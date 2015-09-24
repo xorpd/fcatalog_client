@@ -50,6 +50,7 @@ def get_func_length(func_addr):
     return func_end - func_addr
 
 
+@idaread
 def get_func_data(func_addr):
     """
     Get function's data
@@ -70,6 +71,9 @@ def get_func_comment(func_addr):
     # Currently not implemented:
     return ""
 
+# An IDA read thread safe version:
+ts_get_func_comment = idaread(get_func_comment)
+
 def set_func_comment(func_addr,comment):
     """
     Set function's comment.
@@ -77,6 +81,25 @@ def set_func_comment(func_addr,comment):
     # Currently not implemented:
     pass
 
+# An IDA write thread safe version:
+ts_set_func_comment = idawrite(set_func_comment)
+
+def ts_Functions():
+    """
+    Thread safe IDA iteration over all functions.
+    """
+    funcs_iter = idaread(idautils.Functions)()
+    while True:
+        yield idaread(funcs_iter.next)()
+
+@idawrite
+def ts_make_name(func_addr,func_name):
+    """
+    Set the name of function at address func_addr to func_name.
+    This function is IDA write thread safe.
+    """
+    idc.MakeName(func_addr,func_name)
+    idc.Refresh()
 
 #########################################################################
 
@@ -145,6 +168,8 @@ def is_func_chunked(func_addr):
     return (num_chunks > 1)
 
 
+
+@idaread
 def is_func_commit_candidate(func_addr):
     """
     Is this function a candidate for committing?
@@ -161,6 +186,7 @@ def is_func_commit_candidate(func_addr):
 
     return True
 
+@idaread
 def is_func_find_candidate(func_addr):
     """
     Is this function a candidate for finding from database (Finding similars
@@ -182,8 +208,9 @@ def iter_func_find_candidates():
     """
     Iterate over all functions that are candidates for finding similars from
     the remote database.
+    This function is IDA read thread safe.
     """
-    for func_addr in idautils.Functions():
+    for func_addr in ts_Functions():
         if is_func_find_candidate(func_addr):
             yield func_addr
 
@@ -236,6 +263,7 @@ def make_fcatalog_name(func_name,sim_grade,func_addr):
 ###########################################################################
 
 
+
 class FCatalogClient(object):
     def __init__(self,remote,db_name):
         # Keep remote address:
@@ -252,29 +280,39 @@ class FCatalogClient(object):
         self._print = idaread(print)
 
 
-    def commit_funcs(self):
+    def _commit_funcs_thread(self):
         """
         Commit all the named functions from this idb to the server.
+        This is an IDA read thread safe function.
         """
         self._print('Commiting functions...')
         # Set up a connection to remote db:
         frame_endpoint = TCPFrameClient(self._remote)
         fdb = DBEndpoint(frame_endpoint,self._db_name)
 
-        for func_addr in idautils.Functions():
+        for func_addr in ts_Functions():
             if not is_func_commit_candidate(func_addr):
                 continue
 
-            func_name = idc.GetFunctionName(func_addr)
+            func_name = idaread(idc.GetFunctionName)(func_addr)
             func_comment = strip_comment_fcatalog(get_func_comment(func_addr))
             func_data = get_func_data(func_addr)
 
             fdb.add_function(func_name,func_comment,func_data)
-            print(func_name)
+            self._print(func_name)
 
         # Close db:
         fdb.close()
         self._print('Done commiting functions.')
+
+    def commit_funcs(self):
+        """
+        Commit all functions from this IDB to the server.
+        """
+        try:
+            t = self._te.execute(self._commit_funcs_thread)
+        except ThreadExecutorError:
+            print('Another operation is currently running. Please wait.')
 
 
     def _batch_similars(self,fdb,l_func_addr):
@@ -282,6 +320,7 @@ class FCatalogClient(object):
         Given a list of function addresses, request similars for each of those
         functions. Then wait for all the responses, and return a list of tuples
         of the form: (func_addr,similars)
+        This function is IDA read thread safe.
         """
         # Send requests for similars for every function in l_func_addr list:
         for func_addr in l_func_addr:
@@ -297,10 +336,11 @@ class FCatalogClient(object):
         return lres
 
 
-    def find_similars(self,similarity_cut,batch_size=GET_SIMILARS_BATCH_SIZE):
+    def _find_similars_thread(self,similarity_cut,batch_size=GET_SIMILARS_BATCH_SIZE):
         """
         For each unnamed function in this database find a similar functions
         from the fcatalog remote db, and rename appropriately.
+        This thread is IDA write thread safe.
         """
         self._print('Finding similars...')
 
@@ -326,17 +366,17 @@ class FCatalogClient(object):
                 if fsim.sim_grade < similarity_cut:
                     continue
 
-                old_name = idc.GetFunctionName(func_addr)
+                old_name = idaread(idc.GetFunctionName)(func_addr)
 
                 # Set new name:
                 new_name = make_fcatalog_name(fsim.name,fsim.sim_grade,func_addr)
-                idc.MakeName(func_addr,new_name)
+                ts_make_name(func_addr,new_name)
 
                 # Add the comments from the fcatalog entry:
-                func_comment = get_func_comment(func_addr)
+                func_comment = ts_get_func_comment(func_addr)
                 func_comment_new = \
                         add_comment_fcatalog(func_comment,fsim.comment)
-                set_func_comment(func_addr,func_comment_new)
+                ts_set_func_comment(func_addr,func_comment_new)
 
                 self._print('{} --> {}'.format(old_name,new_name))
 
@@ -344,6 +384,16 @@ class FCatalogClient(object):
         fdb.close()
 
         self._print('Done finding similars.')
+
+    def find_similars(self):
+        """
+        For each unnamed function in this database find a similar functions
+        from the fcatalog remote db, and rename appropriately.
+        """
+        try:
+            t = self._te.execute(self._find_similars_thread)
+        except ThreadExecutorError:
+            print('Another operation is currently running. Please wait.')
 
 
 def clean_idb():
