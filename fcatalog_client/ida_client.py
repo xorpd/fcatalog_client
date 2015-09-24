@@ -1,3 +1,4 @@
+from __future__ import print_function
 import idaapi
 import idautils
 import idc
@@ -50,10 +51,10 @@ def get_func_length(func_addr):
     return func_end - func_addr
 
 
-@idaread
-def get_func_data(func_addr):
+def ts_get_func_data(func_addr):
     """
     Get function's data
+    TODO: How to make this threadsafe?
     """
     func_length = get_func_length(func_addr)
     func_data = idc.GetManyBytes(func_addr,func_length)
@@ -72,7 +73,9 @@ def get_func_comment(func_addr):
     return ""
 
 # An IDA read thread safe version:
-ts_get_func_comment = idaread(get_func_comment)
+# TODO: Make this threadsafe.
+ts_get_func_comment = get_func_comment
+
 
 def set_func_comment(func_addr,comment):
     """
@@ -87,10 +90,38 @@ ts_set_func_comment = idawrite(set_func_comment)
 def ts_Functions():
     """
     Thread safe IDA iteration over all functions.
+    TODO: Make this thread safe.
     """
-    funcs_iter = idaread(idautils.Functions)()
-    while True:
-        yield idaread(funcs_iter.next)()
+    return idautils.Functions()
+
+
+@idaread
+def ts_first_func_addr():
+    """
+    Get addr of the first function.
+    IDA read thread safe.
+    """
+    if not start: start = idaapi.cvar.inf.minEA
+    if not end:   end = idaapi.cvar.inf.maxEA
+
+    # find first function head chunk in the range
+    chunk = idaapi.get_fchunk(start)
+    if not chunk:
+        chunk = idaapi.get_next_fchunk(start)
+    while chunk and chunk.startEA < end and (chunk.flags & idaapi.FUNC_TAIL) != 0:
+        chunk = idaapi.get_next_fchunk(chunk.startEA)
+    func = chunk
+    return func.startEA
+
+
+def ts_GetFunctionName(func_addr):
+    """
+    Should be a thread safe version of GetFunctionName.
+    TODO: Make this thread safe.
+    """
+    return idc.GetFunctionName(func_addr)
+
+
 
 @idawrite
 def ts_make_name(func_addr,func_name):
@@ -108,14 +139,14 @@ def is_func_fcatalog(func_addr):
     Have we obtained the name for this function from fcatalog server?
     We know this by the name of the function.
     """
-    func_name = idc.GetFunctionName(func_addr)
+    func_name = ts_GetFunctionName(func_addr)
     return func_name.startswith(FCATALOG_FUNC_NAME_PREFIX)
 
 def is_func_named(func_addr):
     """
     Check if a function was ever named by the user.
     """
-    func_name = idc.GetFunctionName(func_addr)
+    func_name = ts_GetFunctionName(func_addr)
 
     # Avoid functions like sub_409f498:
     if func_name.startswith('sub_'):
@@ -275,9 +306,10 @@ class FCatalogClient(object):
         # A thread executor. Allows only one task to be run every time.
         self._te = ThreadExecutor()
 
+        
         # A thread safe print function. I am not sure if this is rquired. It is
         # done to be one the safe side:
-        self._print = idaread(print)
+        self._print = print
 
 
     def _commit_funcs_thread(self):
@@ -294,9 +326,9 @@ class FCatalogClient(object):
             if not is_func_commit_candidate(func_addr):
                 continue
 
-            func_name = idaread(idc.GetFunctionName)(func_addr)
+            func_name = ts_GetFunctionName(func_addr)
             func_comment = strip_comment_fcatalog(get_func_comment(func_addr))
-            func_data = get_func_data(func_addr)
+            func_data = ts_get_func_data(func_addr)
 
             fdb.add_function(func_name,func_comment,func_data)
             self._print(func_name)
@@ -324,7 +356,7 @@ class FCatalogClient(object):
         """
         # Send requests for similars for every function in l_func_addr list:
         for func_addr in l_func_addr:
-            func_data = get_func_data(func_addr)
+            func_data = ts_get_func_data(func_addr)
             fdb.request_similars(func_data,1)
 
         # Collect responses from remote server:
@@ -336,7 +368,7 @@ class FCatalogClient(object):
         return lres
 
 
-    def _find_similars_thread(self,similarity_cut,batch_size=GET_SIMILARS_BATCH_SIZE):
+    def _find_similars_thread(self,similarity_cut,batch_size):
         """
         For each unnamed function in this database find a similar functions
         from the fcatalog remote db, and rename appropriately.
@@ -366,7 +398,7 @@ class FCatalogClient(object):
                 if fsim.sim_grade < similarity_cut:
                     continue
 
-                old_name = idaread(idc.GetFunctionName)(func_addr)
+                old_name = ts_GetFunctionName(func_addr)
 
                 # Set new name:
                 new_name = make_fcatalog_name(fsim.name,fsim.sim_grade,func_addr)
@@ -385,13 +417,14 @@ class FCatalogClient(object):
 
         self._print('Done finding similars.')
 
-    def find_similars(self):
+    def find_similars(self,similarity_cut,batch_size=GET_SIMILARS_BATCH_SIZE):
         """
         For each unnamed function in this database find a similar functions
         from the fcatalog remote db, and rename appropriately.
         """
         try:
-            t = self._te.execute(self._find_similars_thread)
+            t = self._te.execute(self._find_similars_thread,\
+                    similarity_cut,batch_size)
         except ThreadExecutorError:
             print('Another operation is currently running. Please wait.')
 
