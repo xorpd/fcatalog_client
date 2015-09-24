@@ -1,8 +1,11 @@
 import idaapi
 import idautils
 import idc
+
 from db_endpoint import DBEndpoint,TCPFrameClient
 from utils import blockify
+from thread_executor import ThreadExecutor, ThreadExecutorError
+from idasync import idaread,idawrite
 
 class FCatalogClientError(Exception): pass
 
@@ -241,12 +244,19 @@ class FCatalogClient(object):
         # Keep remote db name:
         self._db_name = db_name
 
+        # A thread executor. Allows only one task to be run every time.
+        self._te = ThreadExecutor()
+
+        # A thread safe print function. I am not sure if this is rquired. It is
+        # done to be one the safe side:
+        self._print = idaread(print)
+
 
     def commit_funcs(self):
         """
         Commit all the named functions from this idb to the server.
         """
-        print('Commiting functions...')
+        self._print('Commiting functions...')
         # Set up a connection to remote db:
         frame_endpoint = TCPFrameClient(self._remote)
         fdb = DBEndpoint(frame_endpoint,self._db_name)
@@ -264,7 +274,7 @@ class FCatalogClient(object):
 
         # Close db:
         fdb.close()
-        print('Done commiting functions.')
+        self._print('Done commiting functions.')
 
 
     def _batch_similars(self,fdb,l_func_addr):
@@ -292,7 +302,7 @@ class FCatalogClient(object):
         For each unnamed function in this database find a similar functions
         from the fcatalog remote db, and rename appropriately.
         """
-        print('Finding similars...')
+        self._print('Finding similars...')
 
         # Set up a connection to remote db:
         frame_endpoint = TCPFrameClient(self._remote)
@@ -328,12 +338,12 @@ class FCatalogClient(object):
                         add_comment_fcatalog(func_comment,fsim.comment)
                 set_func_comment(func_addr,func_comment_new)
 
-                print('{} --> {}'.format(old_name,new_name))
+                self._print('{} --> {}'.format(old_name,new_name))
 
         # Close db:
         fdb.close()
 
-        print('Done finding similars.')
+        self._print('Done finding similars.')
 
 
 def clean_idb():
