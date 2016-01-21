@@ -20,11 +20,12 @@ class ThreadExecutor(object):
 
         def worker():
             # Run the function:
-            func(*args,**kwargs)
-
-            # Mark finished running when the execution
-            # of the function is done.
-            self._is_running = False
+            try:
+                func(*args,**kwargs)
+            finally:
+                # Mark finished running when the execution
+                # of the function is done.
+                self._is_running = False
 
         # Run the worker in a new thread:
         t = threading.Thread(target=worker)
