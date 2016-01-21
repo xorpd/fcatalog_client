@@ -5,6 +5,24 @@
 import functools
 import idaapi
 
+# Important note: Always make sure the return value from your function f is a
+# copy of the data you have gotten from IDA, and not the original data.
+#
+# Example:
+# --------
+#
+# Do this:
+#
+#   @idaread
+#   def ts_Functions():
+#       return list(idautils.Functions())
+#
+# Don't do this:
+#
+#   @idaread
+#   def ts_Functions():
+#       return idautils.Functions()
+#
 
 def idawrite(f):
     """
@@ -14,7 +32,14 @@ def idawrite(f):
     @functools.wraps(f)
     def wrapper(*args, **kwargs):
         ff = functools.partial(f, *args, **kwargs)
-        return idaapi.execute_sync(ff, idaapi.MFF_WRITE)
+        # We keep the result of the runned function using a result container:
+        res_container = []
+        def runned():
+            res = ff()
+            res_container.append(ff())
+
+        ret_val = idaapi.execute_sync(runned, idaapi.MFF_WRITE)
+        return res_container[0]
     return wrapper
 
 
@@ -28,5 +53,11 @@ def idaread(f):
     @functools.wraps(f)
     def wrapper(*args, **kwargs):
         ff = functools.partial(f, *args, **kwargs)
-        return idaapi.execute_sync(ff, idaapi.MFF_READ)
+        # We keep the result of the runned function using a result container:
+        res_container = []
+        def runned():
+            res_container.append(ff())
+
+        ret_val = idaapi.execute_sync(runned, idaapi.MFF_READ)
+        return res_container[0]
     return wrapper
