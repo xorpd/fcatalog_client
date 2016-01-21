@@ -11,6 +11,7 @@ class ClientConfig(object):
         self.db_name = None
         self.remote_host = None
         self.remote_port = None
+        self.exclude_pattern = None
 
 
 ##########################################################################
@@ -43,6 +44,9 @@ def save_config(client_config):
     config_str += str(client_config.remote_port)
     config_str += ":"
     config_str += client_config.db_name
+    config_str += ":"
+    if client_config.exclude_pattern is not None:
+        config_str += client_config.exclude_pattern
 
     save_sstring(config_str)
 
@@ -58,7 +62,12 @@ def load_config():
     # Skip the percents prefix:
     config_str = config_str[3:]
 
-    remote_host,remote_port_str,db_name = config_str.split(':')
+    try:
+        remote_host,remote_port_str,db_name,exclude_pattern = config_str.split(':')
+    except ValueError:
+        # Abort if could not unpack 4 values
+        return None
+
     remote_port = int(remote_port_str)
 
     # Create a client config instance and fill it with the loaded
@@ -67,6 +76,8 @@ def load_config():
     client_config.remote_host = remote_host
     client_config.remote_port = remote_port
     client_config.db_name = db_name
+    if len(exclude_pattern) == 0:
+        client_config.exclude_pattern = None
 
     return client_config
 
@@ -84,10 +95,12 @@ FCatalog Client Configuration
 <#Host:{host}>
 <#Port:{port}>
 <#Database Name:{db_name}>
+<#Exclude Pattern:{exclude_pattern}>
 """, {
         'host': Form.StringInput(tp=Form.FT_TYPE),
         'port': Form.StringInput(tp=Form.FT_TYPE),
         'db_name': Form.StringInput(tp=Form.FT_TYPE),
+        'exclude_pattern': Form.StringInput(tp=Form.FT_TYPE),
     })
 
 
@@ -133,7 +146,8 @@ class FCatalogPlugin(idaapi.plugin_t):
             self._fcc = FCatalogClient(\
                     (self._client_config.remote_host,\
                     self._client_config.remote_port),\
-                    self._client_config.db_name)
+                    self._client_config.db_name,\
+                    self._client_config.exclude_pattern)
 
         # Make sure that self._client config is built, even if it doesn't have
         # any fields inside:
@@ -237,6 +251,8 @@ class FCatalogPlugin(idaapi.plugin_t):
             cf.port.value = str(self._client_config.remote_port)
         if self._client_config.db_name is not None:
             cf.db_name.value = self._client_config.db_name
+        if self._client_config.exclude_pattern is not None:
+            cf.exclude_pattern.value = self._client_config.exclude_pattern
 
         # Execute the form
         res = cf.Execute()
@@ -267,12 +283,19 @@ class FCatalogPlugin(idaapi.plugin_t):
                 is_conf_good = False
             self._client_config.db_name = db_name
 
+            # Extract exclude_pattern
+            exclude_pattern = cf.exclude_pattern.value
+            if len(exclude_pattern) == 0:
+                exclude_pattern = None
+            self._client_config.exclude_pattern = exclude_pattern
+
             if is_conf_good:
                 save_config(self._client_config)
                 self._fcc = FCatalogClient(\
                         (self._client_config.remote_host,\
                         self._client_config.remote_port),\
-                        self._client_config.db_name)
+                        self._client_config.db_name,\
+                        self._client_config.exclude_pattern)
                 print('Configuration successful.')
             else:
                 print('Invalid configuration.')

@@ -2,6 +2,7 @@ from __future__ import print_function
 import idaapi
 import idautils
 import idc
+import re
 
 from db_endpoint import DBEndpoint,TCPFrameClient
 from utils import blockify
@@ -36,16 +37,18 @@ def get_func_length(func_addr):
     # First check if this is a chunked function.
     # If so, we abort.
     if is_func_chunked(func_addr):
-        raise FCatalogClientError('Function {:X} is chunked. Can not calculate'
-                ' length.'.format(func_addr))
+        return None
+        # raise FCatalogClientError('Function {:X} is chunked. Can not calculate'
+        #        ' length.'.format(func_addr))
 
 
     # Get the end of the function:
-    func_end = idc.GetFunctionAttr(func_addr,idc.FUNCATTR_END)
+    func_end = idaread(idc.GetFunctionAttr)(func_addr,idc.FUNCATTR_END)
 
     if func_end < func_addr:
-        raise FCatalogClientError('Function {:X} has end lower than start'.\
-                format(func_addr))
+        return None
+        # raise FCatalogClientError('Function {:X} has end lower than start'.\
+        #        format(func_addr))
 
     # Calculate length and return:
     return func_end - func_addr
@@ -57,10 +60,13 @@ def ts_get_func_data(func_addr):
     Get function's data
     """
     func_length = get_func_length(func_addr)
+    if func_length is None:
+        return None
     func_data = idc.GetManyBytes(func_addr,func_length)
     if func_data is None:
-        raise FCatalogClientError('Failed reading function {:X} data'.\
-                format(func_addr))
+        return None
+        # raise FCatalogClientError('Failed reading function {:X} data'.\
+        #        format(func_addr))
 
     return str(func_data)
 
@@ -133,6 +139,7 @@ def ts_make_name(func_addr,func_name):
 
 #########################################################################
 
+@idaread
 def is_func_fcatalog(func_addr):
     """
     Have we obtained the name for this function from fcatalog server?
@@ -141,33 +148,9 @@ def is_func_fcatalog(func_addr):
     func_name = ts_GetFunctionName(func_addr)
     return func_name.startswith(FCATALOG_FUNC_NAME_PREFIX)
 
-def is_func_named(func_addr):
-    """
-    Check if a function was ever named by the user.
-    """
-    func_name = ts_GetFunctionName(func_addr)
-
-    # Avoid functions like sub_409f498:
-    if func_name.startswith('sub_'):
-        return False
-
-    # Avoid MAYBE functions:
-    if ('_maybe' in func_name.lower()) or \
-            ('maybe_' in func_name.lower()):
-        return False
-
-    # Avoid RELATED functions:
-    if ('_related' in func_name.lower()) or \
-            ('related_' in func_name.lower()):
-        return False
-
-    # Avoid reindexing FCATALOG functions:
-    if is_func_fcatalog(func_addr):
-        return False
-
-    return True
 
 
+@idaread
 def is_func_long_enough(func_addr):
     """
     Check if a given function is of suitable size to be commited.
@@ -179,6 +162,7 @@ def is_func_long_enough(func_addr):
     return True
 
 
+@idaread
 def is_func_chunked(func_addr):
     """
     Check if a function is divided into chunks.
@@ -196,54 +180,6 @@ def is_func_chunked(func_addr):
         status = func_iter.next()
 
     return (num_chunks > 1)
-
-
-
-@idaread
-def is_func_commit_candidate(func_addr):
-    """
-    Is this function a candidate for committing?
-    """
-    # Don't commit if chunked:
-    if is_func_chunked(func_addr):
-        return False
-
-    if not is_func_named(func_addr):
-        return False
-
-    if not is_func_long_enough(func_addr):
-        return False
-
-    return True
-
-@idaread
-def is_func_find_candidate(func_addr):
-    """
-    Is this function a candidate for finding from database (Finding similars
-    for this function?)
-    """
-    if is_func_chunked(func_addr):
-        return False
-
-    if is_func_named(func_addr):
-        return False
-
-    if not is_func_long_enough(func_addr):
-        return False
-
-    return True
-
-
-def iter_func_find_candidates():
-    """
-    Iterate over all functions that are candidates for finding similars from
-    the remote database.
-    This function is IDA read thread safe.
-    """
-    for func_addr in ts_Functions():
-        if is_func_find_candidate(func_addr):
-            yield func_addr
-
 
 ###########################################################################
 
@@ -295,7 +231,7 @@ def make_fcatalog_name(func_name,sim_grade,func_addr):
 
 
 class FCatalogClient(object):
-    def __init__(self,remote,db_name):
+    def __init__(self,remote,db_name,exclude_pattern=None):
         # Keep remote address:
         self._remote = remote
 
@@ -305,10 +241,80 @@ class FCatalogClient(object):
         # A thread executor. Allows only one task to be run every time.
         self._te = ThreadExecutor()
 
+        # A regexp pattern that identifies functions that are not named, and
+        # should be ignored.
+        self._exclude_pattern = exclude_pattern
+
         
         # A thread safe print function. I am not sure if this is rquired. It is
         # done to be one the safe side:
         self._print = print
+
+    def _is_func_named(self,func_addr):
+        """
+        Check if a function was ever named by the user.
+        """
+        func_name = ts_GetFunctionName(func_addr)
+
+        # Avoid functions like sub_409f498:
+        if func_name.startswith('sub_'):
+            return False
+
+        # If exclude_pattern was provided, make sure that the function
+        # name does not match it:
+        if self._exclude_pattern is not None:
+            mt = re.match(self._exclude_pattern,func_name)
+            if mt is not None:
+                return False
+
+        # Avoid reindexing FCATALOG functions:
+        if is_func_fcatalog(func_addr):
+            return False
+
+        return True
+
+    def _is_func_commit_candidate(self,func_addr):
+        """
+        Is this function a candidate for committing?
+        """
+        # Don't commit if chunked:
+        if is_func_chunked(func_addr):
+            return False
+
+        if not self._is_func_named(func_addr):
+            return False
+
+        if not is_func_long_enough(func_addr):
+            return False
+
+        return True
+
+    def _is_func_find_candidate(self,func_addr):
+        """
+        Is this function a candidate for finding from database (Finding similars
+        for this function?)
+        """
+        if is_func_chunked(func_addr):
+            return False
+
+        if self._is_func_named(func_addr):
+            return False
+
+        if not is_func_long_enough(func_addr):
+            return False
+
+        return True
+
+
+    def _iter_func_find_candidates(self):
+        """
+        Iterate over all functions that are candidates for finding similars from
+        the remote database.
+        This function is IDA read thread safe.
+        """
+        for func_addr in ts_Functions():
+            if self._is_func_find_candidate(func_addr):
+                yield func_addr
 
 
     def _commit_funcs_thread(self):
@@ -323,12 +329,17 @@ class FCatalogClient(object):
 
 
         for func_addr in ts_Functions():
-            if not is_func_commit_candidate(func_addr):
+            if not self._is_func_commit_candidate(func_addr):
                 continue
 
             func_name = ts_GetFunctionName(func_addr)
             func_comment = strip_comment_fcatalog(get_func_comment(func_addr))
             func_data = ts_get_func_data(func_addr)
+
+            # If we had problems reading the function data, we skip it.
+            if func_data is None:
+                self._print('!> Skipping {}'.format(func_name))
+                continue
 
             fdb.add_function(func_name,func_comment,func_data)
             self._print(func_name)
@@ -381,7 +392,8 @@ class FCatalogClient(object):
         fdb = DBEndpoint(frame_endpoint,self._db_name)
 
         # Iterate over blocks of candidate functions addresses:
-        for l_func_addr in blockify(iter_func_find_candidates(),batch_size):
+        for l_func_addr in blockify(self._iter_func_find_candidates(),\
+                batch_size):
             # Send block to remote server and get results:
             bsimilars = self._batch_similars(fdb,l_func_addr)
             # Iterate over functions and results:
