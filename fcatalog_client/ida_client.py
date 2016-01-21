@@ -51,10 +51,10 @@ def get_func_length(func_addr):
     return func_end - func_addr
 
 
+@idaread
 def ts_get_func_data(func_addr):
     """
     Get function's data
-    TODO: How to make this threadsafe?
     """
     func_length = get_func_length(func_addr)
     func_data = idc.GetManyBytes(func_addr,func_length)
@@ -62,7 +62,7 @@ def ts_get_func_data(func_addr):
         raise FCatalogClientError('Failed reading function {:X} data'.\
                 format(func_addr))
 
-    return func_data
+    return str(func_data)
 
 
 def get_func_comment(func_addr):
@@ -73,8 +73,7 @@ def get_func_comment(func_addr):
     return ""
 
 # An IDA read thread safe version:
-# TODO: Make this threadsafe.
-ts_get_func_comment = get_func_comment
+ts_get_func_comment = idaread(get_func_comment)
 
 
 def set_func_comment(func_addr,comment):
@@ -87,12 +86,12 @@ def set_func_comment(func_addr,comment):
 # An IDA write thread safe version:
 ts_set_func_comment = idawrite(set_func_comment)
 
+@idaread
 def ts_Functions():
     """
     Thread safe IDA iteration over all functions.
-    TODO: Make this thread safe.
     """
-    return idautils.Functions()
+    return list(idautils.Functions())
 
 
 @idaread
@@ -111,15 +110,15 @@ def ts_first_func_addr():
     while chunk and chunk.startEA < end and (chunk.flags & idaapi.FUNC_TAIL) != 0:
         chunk = idaapi.get_next_fchunk(chunk.startEA)
     func = chunk
-    return func.startEA
+    return int(func.startEA)
 
 
+@idaread
 def ts_GetFunctionName(func_addr):
     """
     Should be a thread safe version of GetFunctionName.
-    TODO: Make this thread safe.
     """
-    return idc.GetFunctionName(func_addr)
+    return str(idc.GetFunctionName(func_addr))
 
 
 
@@ -321,6 +320,7 @@ class FCatalogClient(object):
         # Set up a connection to remote db:
         frame_endpoint = TCPFrameClient(self._remote)
         fdb = DBEndpoint(frame_endpoint,self._db_name)
+
 
         for func_addr in ts_Functions():
             if not is_func_commit_candidate(func_addr):
