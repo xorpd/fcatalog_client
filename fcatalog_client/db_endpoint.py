@@ -163,10 +163,40 @@ class TCPFrameClient(FrameEndpoint):
         Send one frame to a socket.
         """
         try:
-            self._sock.send(len_prefix_pack(data))
+            self._sock.sendall(len_prefix_pack(data))
         except socket.error as e:
             raise NetError('Failed sending a frame')
             # raise NetError('Failed sending a frame') from e
+
+    def _recv_all(self,length):
+        """
+        Keep waiting for bytes until <length> bytes were received.
+        Then return those <length> bytes.
+
+        If connection was closed, return None.
+        If connection was closed in the middle of receiving length bytes, raise
+        a NetError exception.
+        """
+        # A list to keep the data we have received so far:
+        data_l = []
+        bytes_received = 0
+
+        while bytes_received < length:
+            try:
+                data_received = self._sock.recv(length - bytes_received)
+            except socket.error:
+                raise NetError('Error receiving data')
+            if len(data_received) == 0:
+                # Remote host has disconnected:
+                if bytes_received == 0:
+                    return None
+                raise NetError('Remote host closed in a middle of recv_all')
+            bytes_received += len(data_received)
+            data_l.append(data_received)
+
+        # Combine all chunks of data received, and return them as one buffer:
+        return "".join(data_l)
+
 
     def recv_frame(self):
         """
@@ -174,13 +204,9 @@ class TCPFrameClient(FrameEndpoint):
         Every frame is prefixed with a dword of its length.
         """
         # Receive 4 bytes:
-        try:
-            len_data = self._sock.recv(4)
-        except socket.error as e:
-            raise NetError('Failed receiving a frame')
-            # raise NetError('Failed receiving a frame') from e
+        len_data = self._recv_all(4)
 
-        if len(len_data) == 0:
+        if len_data is None:
             # Remote host has closed the connection:
             self.close()
             return None
@@ -191,7 +217,7 @@ class TCPFrameClient(FrameEndpoint):
         if len_int < 4:
             raise NetError('Received invalid frame from remote host')
 
-        return self._sock.recv(len_int)
+        return self._recv_all(len_int)
 
     def close(self):
         """
