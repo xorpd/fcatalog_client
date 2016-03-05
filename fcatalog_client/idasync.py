@@ -62,7 +62,7 @@ def sync_wrapper(ff,safety_mode):
     safety requirement or lower, but it is not possible for a function with a
     low safety requirement to call a function with a high safety requirement.
     """
-    logger.info('sync_wrapper: {}, {}'.format(ff.__name__,safety_mode))
+    logger.debug('sync_wrapper: {}, {}'.format(ff.__name__,safety_mode))
 
     if safety_mode not in [IDASafety.SAFE_READ,IDASafety.SAFE_WRITE]:
         error_str = 'Invalid safety mode {} over function {}'\
@@ -90,7 +90,7 @@ def sync_wrapper(ff,safety_mode):
     res_container = Queue.Queue()
 
     def runned():
-        logger.info('Inside runned')
+        logger.debug('Inside runned')
         thread_local.safety_state.cur_safety = safety_mode
         thread_local.safety_state.call_stack.append(ff.__name__)
         try:
@@ -98,7 +98,7 @@ def sync_wrapper(ff,safety_mode):
         finally:
             thread_local.safety_state.cur_safety = IDASafety.SAFE_NONE
             thread_local.safety_state.call_stack.pop()
-            logger.info('Finished runned')
+            logger.debug('Finished runned')
 
     ret_val = idaapi.execute_sync(runned,safety_mode)
     res = res_container.get()

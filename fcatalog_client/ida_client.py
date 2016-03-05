@@ -38,7 +38,7 @@ def get_func_length(func_addr):
     """
     Return function's length.
     """
-    logger.info('get_func_length: {}'.format(func_addr))
+    logger.debug('get_func_length: {}'.format(func_addr))
     # First check if this is a chunked function.
     # If so, we abort.
     if is_func_chunked(func_addr):
@@ -64,7 +64,7 @@ def ts_get_func_data(func_addr):
     """
     Get function's data
     """
-    logger.info('ts_get_func_data: {}'.format(func_addr))
+    logger.debug('ts_get_func_data: {}'.format(func_addr))
     func_length = get_func_length(func_addr)
     if func_length is None:
         return None
@@ -103,7 +103,7 @@ def ts_Functions():
     """
     Thread safe IDA iteration over all functions.
     """
-    logger.info('ts_Functions')
+    logger.debug('ts_Functions')
     return list(idautils.Functions())
 
 
@@ -113,7 +113,7 @@ def ts_first_func_addr():
     Get addr of the first function.
     IDA read thread safe.
     """
-    logger.info('ts_first_func_addr')
+    logger.debug('ts_first_func_addr')
     if not start: start = idaapi.cvar.inf.minEA
     if not end:   end = idaapi.cvar.inf.maxEA
 
@@ -132,7 +132,7 @@ def ts_GetFunctionName(func_addr):
     """
     Should be a thread safe version of GetFunctionName.
     """
-    logger.info('ts_GetFunctionName')
+    logger.debug('ts_GetFunctionName')
     return str(idc.GetFunctionName(func_addr))
 
 
@@ -143,7 +143,7 @@ def ts_make_name(func_addr,func_name):
     Set the name of function at address func_addr to func_name.
     This function is IDA write thread safe.
     """
-    logger.info('ts_make_name {}, {}'.format(func_addr,func_name))
+    logger.debug('ts_make_name {}, {}'.format(func_addr,func_name))
     idc.MakeName(func_addr,func_name)
     idc.Refresh()
 
@@ -154,7 +154,7 @@ def is_func_fcatalog(func_addr):
     Have we obtained the name for this function from fcatalog server?
     We know this by the name of the function.
     """
-    logger.info('is_func_fcatalog {}'.format(func_addr))
+    logger.debug('is_func_fcatalog {}'.format(func_addr))
     func_name = ts_GetFunctionName(func_addr)
     return func_name.startswith(FCATALOG_FUNC_NAME_PREFIX)
 
@@ -163,7 +163,7 @@ def is_func_long_enough(func_addr):
     """
     Check if a given function is of suitable size to be commited.
     """
-    logger.info('is_func_long_enough {}'.format(func_addr))
+    logger.debug('is_func_long_enough {}'.format(func_addr))
     func_length = get_func_length(func_addr)
     if func_length < MIN_FUNC_LENGTH:
         return False
@@ -176,7 +176,7 @@ def is_func_chunked(func_addr):
     """
     Check if a function is divided into chunks.
     """
-    logger.info('is_func_chunked {}'.format(func_addr))
+    logger.debug('is_func_chunked {}'.format(func_addr))
     # Idea for this code is from:
     # http://code.google.com/p/idapython/source/browse/trunk/python/idautils.py?r=344
 
@@ -264,7 +264,7 @@ class FCatalogClient(object):
         """
         Check if a function was ever named by the user.
         """
-        logger.info('_is_func_named {}'.format(func_addr))
+        logger.debug('_is_func_named {}'.format(func_addr))
         func_name = ts_GetFunctionName(func_addr)
 
         # Avoid functions like sub_409f498:
@@ -340,7 +340,7 @@ class FCatalogClient(object):
 
 
         for func_addr in ts_Functions():
-            logger.info('Iterating over func_addr: {}'.format(func_addr))
+            logger.debug('Iterating over func_addr: {}'.format(func_addr))
             if not self._is_func_commit_candidate(func_addr):
                 continue
 
