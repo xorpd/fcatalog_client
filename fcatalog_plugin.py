@@ -1,9 +1,18 @@
+import logging
+import os
 import idaapi
 from idaapi import Form
 
 import idautils
 import idc
 from fcatalog_client.ida_client import FCatalogClient,clean_idb,MAX_SIM_GRADE
+
+# Set up logging:
+LOG_FILE_NAME = 'fcatalog_plugin.log'
+cur_dir = os.path.dirname(os.path.abspath(__file__))
+log_file_path = os.path.join(cur_dir,LOG_FILE_NAME)
+logging.basicConfig(filename=log_file_path,level=logging.INFO)
+
 
 # Client configuration:
 class ClientConfig(object):
