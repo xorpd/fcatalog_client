@@ -269,7 +269,6 @@ class DBEndpoint(object):
         """
         Add a function to remote database.
         """
-        logger.info('add_function {}'.format(func_name))
         self._frame_endpoint.send_frame(\
             build_msg_add_function(func_name,func_comment,func_data) \
             )
