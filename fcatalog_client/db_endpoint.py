@@ -1,6 +1,7 @@
 # A basic fcatalog client (For IDA)
 # By xorpd.
 
+import logging
 import socket
 import struct
 import collections
@@ -12,6 +13,7 @@ class SerializeError(FCatalogClientError): pass
 class NetError(FCatalogClientError): pass
 class DBEndpointError(FCatalogClientError): pass
 
+logger = logging.getLogger(__name__)
 
 # The possible messages for the protocol:
 class MsgTypes:
@@ -267,6 +269,7 @@ class DBEndpoint(object):
         """
         Add a function to remote database.
         """
+        logger.info('add_function {}'.format(func_name))
         self._frame_endpoint.send_frame(\
             build_msg_add_function(func_name,func_comment,func_data) \
             )
