@@ -6,7 +6,6 @@ import logging
 import functools
 import idaapi
 
-import threading
 import Queue
 
 class IDASyncError(Exception): pass
@@ -32,9 +31,6 @@ class IDASyncError(Exception): pass
 
 logger = logging.getLogger(__name__)
 
-# Get a thread context.
-thread_local = threading.local()
-
 # Enum for safety modes. Higher means safer:
 class IDASafety:
     SAFE_NONE = 0
@@ -42,25 +38,12 @@ class IDASafety:
     SAFE_WRITE = 2
 
 
-# A class for keeping the safety state with respect to current function
-# call in the current thread.
-class SafetyState:
-    def __init__(self):
-        # Current safety:
-        self.cur_safety = IDASafety.SAFE_NONE
-
-        # Call stack through safety wrappers.
-        # Useful for debugging.
-        self.call_stack = []
+call_stack = Queue.LifoQueue()
 
 
 def sync_wrapper(ff,safety_mode):
     """
     Call a function ff with a specific IDA safety_mode.
-    Handle cases of a safe function calling another safe function.
-    It is possible for a highly safe function to call function of the same
-    safety requirement or lower, but it is not possible for a function with a
-    low safety requirement to call a function with a high safety requirement.
     """
     logger.debug('sync_wrapper: {}, {}'.format(ff.__name__,safety_mode))
 
@@ -70,34 +53,25 @@ def sync_wrapper(ff,safety_mode):
         logger.error(error_str)
         raise IDASyncError(error_str)
 
-    # If safety_state is not present, set it to be SAFE_NONE:
-    if not hasattr(thread_local,'safety_state'):
-        thread_local.safety_state = SafetyState()
-
-    # Check if we have some safety level set up:
-    if thread_local.safety_state.cur_safety != IDASafety.SAFE_NONE:
-        if safety_mode > thread_local.safety_state.cur_safety:
-            error_str = ('Requested high safety mode {} inside low '
-                    'safety mode {}. Call stack: {}').format(\
-                    safety_mode,thread_local.safety_state.cur_safety,\
-                    thread_local.safety_state.call_stack)
-            logger.error(error_str)
-            raise IDASyncError(error_str)
-        # Otherwise, the current safety level is enough:
-        return ff()
-
     # No safety level is set up:
     res_container = Queue.Queue()
 
     def runned():
         logger.debug('Inside runned')
-        thread_local.safety_state.cur_safety = safety_mode
-        thread_local.safety_state.call_stack.append(ff.__name__)
+
+        # Make sure that we are not already inside a sync_wrapper:
+        if not call_stack.empty():
+            last_func_name = call_stack.get()
+            error_str = ('Call stack is not empty while calling the '
+                'function {} from {}').format(ff.__name__,last_func_name)
+            logger.error(error_str)
+            raise IDASyncError(error_str)
+
+        call_stack.put((ff.__name__))
         try:
             res_container.put(ff())
         finally:
-            thread_local.safety_state.cur_safety = IDASafety.SAFE_NONE
-            thread_local.safety_state.call_stack.pop()
+            call_stack.get()
             logger.debug('Finished runned')
 
     ret_val = idaapi.execute_sync(runned,safety_mode)
