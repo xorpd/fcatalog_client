@@ -289,8 +289,14 @@ class FCatalogClient(object):
 
                 old_name = GetFunctionName(func_addr)
 
-                # Set new name:
+                # Generate new name:
                 new_name = make_fcatalog_name(fsim.name,fsim.sim_grade,func_addr)
+
+                # If name matches old name, skip:
+                if new_name == old_name:
+                    continue
+
+                # Set function to have the new name:
                 make_name(func_addr,new_name)
 
                 # Add the comments from the fcatalog entry:
