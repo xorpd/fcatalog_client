@@ -1,14 +1,12 @@
 from __future__ import print_function
 import logging
-import idaapi
-import idautils
-import idc
 import re
 
 from db_endpoint import DBEndpoint,TCPFrameClient
 from utils import blockify
 from thread_executor import ThreadExecutor, ThreadExecutorError
-from idasync import idaread,idawrite
+from ida_ts import get_func_length, get_func_data, get_func_comment, \
+        Functions, first_func_addr, GetFunctionName, is_func_chunked, make_name
 
 class FCatalogClientError(Exception): pass
 
@@ -33,119 +31,6 @@ NUM_SIMILARS = 1
 # similars:
 GET_SIMILARS_BATCH_SIZE = 20
 
-@idaread
-def get_func_length(func_addr):
-    """
-    Return function's length.
-    """
-    logger.debug('get_func_length: {}'.format(func_addr))
-    # First check if this is a chunked function.
-    # If so, we abort.
-    if is_func_chunked(func_addr):
-        return None
-        # raise FCatalogClientError('Function {:X} is chunked. Can not calculate'
-        #        ' length.'.format(func_addr))
-
-
-    # Get the end of the function:
-    func_end = idaread(idc.GetFunctionAttr)(func_addr,idc.FUNCATTR_END)
-
-    if func_end < func_addr:
-        return None
-        # raise FCatalogClientError('Function {:X} has end lower than start'.\
-        #        format(func_addr))
-
-    # Calculate length and return:
-    return func_end - func_addr
-
-
-@idaread
-def ts_get_func_data(func_addr):
-    """
-    Get function's data
-    """
-    logger.debug('ts_get_func_data: {}'.format(func_addr))
-    func_length = get_func_length(func_addr)
-    if func_length is None:
-        return None
-    func_data = idc.GetManyBytes(func_addr,func_length)
-    if func_data is None:
-        return None
-        # raise FCatalogClientError('Failed reading function {:X} data'.\
-        #        format(func_addr))
-
-    return str(func_data)
-
-
-def get_func_comment(func_addr):
-    """
-    Get Function's comment.
-    """
-    # Currently not implemented:
-    return ""
-
-# An IDA read thread safe version:
-ts_get_func_comment = idaread(get_func_comment)
-
-
-def set_func_comment(func_addr,comment):
-    """
-    Set function's comment.
-    """
-    # Currently not implemented:
-    pass
-
-# An IDA write thread safe version:
-ts_set_func_comment = idawrite(set_func_comment)
-
-@idaread
-def ts_Functions():
-    """
-    Thread safe IDA iteration over all functions.
-    """
-    logger.debug('ts_Functions')
-    return list(idautils.Functions())
-
-
-@idaread
-def ts_first_func_addr():
-    """
-    Get addr of the first function.
-    IDA read thread safe.
-    """
-    logger.debug('ts_first_func_addr')
-    if not start: start = idaapi.cvar.inf.minEA
-    if not end:   end = idaapi.cvar.inf.maxEA
-
-    # find first function head chunk in the range
-    chunk = idaapi.get_fchunk(start)
-    if not chunk:
-        chunk = idaapi.get_next_fchunk(start)
-    while chunk and chunk.startEA < end and (chunk.flags & idaapi.FUNC_TAIL) != 0:
-        chunk = idaapi.get_next_fchunk(chunk.startEA)
-    func = chunk
-    return int(func.startEA)
-
-
-@idaread
-def ts_GetFunctionName(func_addr):
-    """
-    Should be a thread safe version of GetFunctionName.
-    """
-    logger.debug('ts_GetFunctionName')
-    return str(idc.GetFunctionName(func_addr))
-
-
-
-@idawrite
-def ts_make_name(func_addr,func_name):
-    """
-    Set the name of function at address func_addr to func_name.
-    This function is IDA write thread safe.
-    """
-    logger.debug('ts_make_name {}, {}'.format(func_addr,func_name))
-    idc.MakeName(func_addr,func_name)
-    idc.Refresh()
 
 #########################################################################
 
@@ -155,7 +40,7 @@ def is_func_fcatalog(func_addr):
     We know this by the name of the function.
     """
     logger.debug('is_func_fcatalog {}'.format(func_addr))
-    func_name = ts_GetFunctionName(func_addr)
+    func_name = GetFunctionName(func_addr)
     return func_name.startswith(FCATALOG_FUNC_NAME_PREFIX)
 
 
@@ -170,26 +55,6 @@ def is_func_long_enough(func_addr):
 
     return True
 
-
-@idaread
-def is_func_chunked(func_addr):
-    """
-    Check if a function is divided into chunks.
-    """
-    logger.debug('is_func_chunked {}'.format(func_addr))
-    # Idea for this code is from:
-    # http://code.google.com/p/idapython/source/browse/trunk/python/idautils.py?r=344
-
-    num_chunks = 0
-    func_iter = idaapi.func_tail_iterator_t(idaapi.get_func(func_addr))
-    status = func_iter.main()
-    while status:
-        chunk = func_iter.chunk()
-        num_chunks += 1
-        # yield (chunk.startEA, chunk.endEA)
-        status = func_iter.next()
-
-    return (num_chunks > 1)
 
 ###########################################################################
 
@@ -265,7 +130,7 @@ class FCatalogClient(object):
         Check if a function was ever named by the user.
         """
         logger.debug('_is_func_named {}'.format(func_addr))
-        func_name = ts_GetFunctionName(func_addr)
+        func_name = GetFunctionName(func_addr)
 
         # Avoid functions like sub_409f498:
         if func_name.startswith('sub_'):
@@ -323,7 +188,7 @@ class FCatalogClient(object):
         the remote database.
         This function is IDA read thread safe.
         """
-        for func_addr in ts_Functions():
+        for func_addr in Functions():
             if self._is_func_find_candidate(func_addr):
                 yield func_addr
 
@@ -339,14 +204,14 @@ class FCatalogClient(object):
         fdb = DBEndpoint(frame_endpoint,self._db_name)
 
 
-        for func_addr in ts_Functions():
+        for func_addr in Functions():
             logger.debug('Iterating over func_addr: {}'.format(func_addr))
             if not self._is_func_commit_candidate(func_addr):
                 continue
 
-            func_name = ts_GetFunctionName(func_addr)
+            func_name = GetFunctionName(func_addr)
             func_comment = strip_comment_fcatalog(get_func_comment(func_addr))
-            func_data = ts_get_func_data(func_addr)
+            func_data = get_func_data(func_addr)
 
             # If we had problems reading the function data, we skip it.
             if func_data is None:
@@ -379,7 +244,7 @@ class FCatalogClient(object):
         """
         # Send requests for similars for every function in l_func_addr list:
         for func_addr in l_func_addr:
-            func_data = ts_get_func_data(func_addr)
+            func_data = get_func_data(func_addr)
             fdb.request_similars(func_data,1)
 
         # Collect responses from remote server:
@@ -422,17 +287,17 @@ class FCatalogClient(object):
                 if fsim.sim_grade < similarity_cut:
                     continue
 
-                old_name = ts_GetFunctionName(func_addr)
+                old_name = GetFunctionName(func_addr)
 
                 # Set new name:
                 new_name = make_fcatalog_name(fsim.name,fsim.sim_grade,func_addr)
-                ts_make_name(func_addr,new_name)
+                make_name(func_addr,new_name)
 
                 # Add the comments from the fcatalog entry:
-                func_comment = ts_get_func_comment(func_addr)
+                func_comment = get_func_comment(func_addr)
                 func_comment_new = \
                         add_comment_fcatalog(func_comment,fsim.comment)
-                ts_set_func_comment(func_addr,func_comment_new)
+                set_func_comment(func_addr,func_comment_new)
 
                 self._print('{} --> {}'.format(old_name,new_name))
 
@@ -458,14 +323,14 @@ def clean_idb():
     Clean all fcatalog marks and names from this idb.
     """
     print('Cleaning idb...')
-    for func_addr in idautils.Functions():
+    for func_addr in Functions():
         # Skip functions that are not fcatalog named:
         if not is_func_fcatalog(func_addr):
             continue
 
-        print('{}'.format(idc.GetFunctionName(func_addr)))
+        print('{}'.format(GetFunctionName(func_addr)))
         # Clear function's name:
-        idc.MakeName(func_addr,'')
+        make_name(func_addr,'')
 
         # Clean fcatalog comments from the function:
         func_comment = get_func_comment(func_addr)
