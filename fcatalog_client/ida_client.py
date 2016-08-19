@@ -5,8 +5,9 @@ import re
 from db_endpoint import DBEndpoint,TCPFrameClient
 from utils import blockify
 from thread_executor import ThreadExecutor, ThreadExecutorError
-from ida_ts import get_func_length, get_func_data, get_func_comment, \
-        Functions, first_func_addr, GetFunctionName, is_func_chunked, make_name
+from ida_ts import get_func_length, get_func_data, get_func_comment,\
+    set_func_comment, Functions, first_func_addr, GetFunctionName,\
+    is_func_chunked, make_name
 
 class FCatalogClientError(Exception): pass
 
